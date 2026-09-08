@@ -45,13 +45,13 @@ def source_db(tmp_path):
         "INSERT INTO outlets VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         [
             # id, code, name, channel, city, region, route, sp, gst, status, closed, deleted
-            (1, "OUT00001", "Good Mart", "GT", "Bengaluru", 1, 10, 5, "GST001", "ACTIVE", None, 0),
-            (2, "OUT00002", "Fine Store", "MT", "Bangalore", 1, 10, 5, "GST002", "ACTIVE", None, 0),
-            (3, "OUT00003", "Old Shop", "GT", "Mumbai", 1, 11, 6, "GST003", "CLOSED", "2025-06-30", 0),
-            (4, "OUT00004", "Gone Ltd", "GT", "Mumbai", 1, 11, 6, "GST004", "DELETED", None, 1),
-            (5, "TST00001", "ZZ_TEST_OUTLET", "GT", "Mumbai", 1, 11, 6, "GST005", "ACTIVE", None, 0),
-            # Shares GST002 with outlet 2: the survivor is the lowest outlet_id.
-            (6, "OUT00006", "Fine Store 2", "MT", "New Delhi", 2, 12, 7, "GST002", "ACTIVE", None, 0),
+            (1, "OUT1", "Good Mart", "GT", "Bengaluru", 1, 10, 5, "GST1", "ACTIVE", None, 0),
+            (2, "OUT2", "Fine Store", "MT", "Bangalore", 1, 10, 5, "GST2", "ACTIVE", None, 0),
+            (3, "OUT3", "Old Shop", "GT", "Mumbai", 1, 11, 6, "GST3", "CLOSED", "2025-06-30", 0),
+            (4, "OUT4", "Gone Ltd", "GT", "Mumbai", 1, 11, 6, "GST4", "DELETED", None, 1),
+            (5, "TST1", "Test Outlet", "GT", "Mumbai", 1, 11, 6, "GST5", "ACTIVE", None, 0),
+            # Shares GST2 with outlet 2: the survivor is the lowest outlet_id.
+            (6, "OUT6", "Fine Store 2", "MT", "New Delhi", 2, 12, 7, "GST2", "ACTIVE", None, 0),
         ],
     )
     conn.executemany(

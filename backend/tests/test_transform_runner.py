@@ -1,3 +1,4 @@
+import contextlib
 import sqlite3
 
 from kestrel.transform.ledger import Action, QualityLedger
@@ -61,10 +62,8 @@ def test_failed_build_leaves_previous_curated_db_intact(tmp_path):
         def run(self, src, dst, ledger):
             raise RuntimeError("step failed")
 
-    try:
+    with contextlib.suppress(RuntimeError):
         build(source, curated, steps=[_Exploding()])
-    except RuntimeError:
-        pass
 
     conn = sqlite3.connect(curated)
     assert conn.execute("SELECT count(*) FROM dim_region").fetchone()[0] == 1
