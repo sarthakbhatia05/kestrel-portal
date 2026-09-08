@@ -1,6 +1,7 @@
 from functools import lru_cache
 from pathlib import Path
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -33,6 +34,17 @@ class Settings(BaseSettings):
 
     anthropic_api_key: str | None = None
     cors_origins: list[str] = ["http://localhost:5173"]
+
+    @field_validator("source_db_path", "curated_db_path")
+    @classmethod
+    def _resolve_against_repo_root(cls, value: Path) -> Path:
+        """Interpret relative paths from the repository root, not the shell's cwd.
+
+        Otherwise the same .env means different files depending on whether
+        the reader is standing in backend/ or at the root, which is exactly
+        the kind of cold-start trap NF1 exists to prevent.
+        """
+        return value if value.is_absolute() else (REPO_ROOT / value).resolve()
 
 
 @lru_cache
