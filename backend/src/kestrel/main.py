@@ -4,6 +4,7 @@ from fastapi.responses import JSONResponse
 
 from kestrel.config import get_settings
 from kestrel.exceptions import AppError
+from kestrel.service.router import router as service_router
 
 
 def create_app() -> FastAPI:
@@ -29,6 +30,8 @@ def create_app() -> FastAPI:
     @app.get("/api/health")
     async def health() -> dict[str, str]:
         return {"status": "ok"}
+
+    app.include_router(service_router)
 
     return app
 
