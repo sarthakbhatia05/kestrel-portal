@@ -5,7 +5,7 @@
 A curated data layer and one metric, end to end, on the real database.
 
 `python -m kestrel.transform build` reads `kestrel_ops.db` read-only and
-materialises a separate `kestrel_curated.db` in about 11 seconds: 5 regions,
+materialises a separate `kestrel_curated.db` in under a minute: 5 regions,
 724 outlets, 511,516 order lines, and 41,477 quality-ledger rows. Every row the
 build excludes or repairs is written to that ledger with the rule that did it.
 The current counts are X4 41,401 (cancelled and open orders), X1 42
@@ -68,7 +68,7 @@ endpoint both already carry.
 
 ## What breaks first
 
-The transform is a full rebuild. At 511k order lines that is 11 seconds; at 50
+The transform is a full rebuild. At 511k order lines that is seconds; at 50
 million it is not, and the ledger would need to be written incrementally.
 SQLite is right for one analyst and a single machine, and wrong for concurrent
 writes — but the read path is a file swap, so a scheduled rebuild would keep

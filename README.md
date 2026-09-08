@@ -43,8 +43,8 @@ python -m kestrel.transform build
 ```
 
 The build prints the row counts it produced and the quality ledger counts by
-rule. It is idempotent: re-run it as often as you like. It takes about 11
-seconds and writes `data/curated/kestrel_curated.db`.
+rule. It is idempotent: re-run it as often as you like. It takes 10-35 seconds depending on disk, and
+writes `data/curated/kestrel_curated.db`.
 
 ### 3. Run the API
 
