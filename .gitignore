@@ -26,3 +26,10 @@ warehouse/
 Thumbs.db
 .idea/
 .vscode/
+
+# SQLite databases: source data is supplied, curated data is built
+*.db
+*.db-wal
+*.db-shm
+*.db.tmp
+data/curated/
