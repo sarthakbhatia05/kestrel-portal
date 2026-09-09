@@ -1,6 +1,8 @@
 import { useScope } from "../../lib/scope";
 import { FillRateCard } from "../service/FillRateCard";
+import { NearExpiryCard } from "../service/NearExpiryCard";
 import { OtifCard } from "../service/OtifCard";
+import { ReturnsCard } from "../service/ReturnsCard";
 
 /**
  * The landing view is an exception surface, not a canvas (G2, C2.3).
@@ -22,6 +24,8 @@ export function LandingView() {
         onUnitChange={setUnit}
       />
       <OtifCard regionId={regionId} period={period} />
+      <ReturnsCard regionId={regionId} period={period} />
+      <NearExpiryCard regionId={regionId} />
     </main>
   );
 }

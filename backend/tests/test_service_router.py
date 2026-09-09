@@ -6,13 +6,22 @@ from fastapi.testclient import TestClient
 from kestrel.dependencies import get_curated_db
 from kestrel.main import create_app
 from kestrel.transform.runner import build
-from kestrel.transform.steps import s00_reference, s20_orders, s30_deliveries
+from kestrel.transform.steps import (
+    s00_reference,
+    s20_orders,
+    s30_deliveries,
+    s40_returns,
+    s50_inventory,
+)
 
 
 @pytest.fixture
 def client(tmp_path, source_db):
     curated = tmp_path / "curated.db"
-    build(source_db, curated, steps=[s00_reference, s20_orders, s30_deliveries])
+    build(
+        source_db, curated,
+        steps=[s00_reference, s20_orders, s30_deliveries, s40_returns, s50_inventory],
+    )
 
     def _override():
         conn = sqlite3.connect(curated)
@@ -116,5 +125,68 @@ def test_otif_tolerance_out_of_range_is_rejected(client):
     response = client.get(
         "/api/service/otif",
         params={"grain": "outlet", "period": "FY27Q1", "tolerance_minutes": -1},
+    )
+    assert response.status_code == 422
+
+
+def test_returns_returns_a_figure_with_its_basis(client):
+    response = client.get(
+        "/api/service/returns", params={"grain": "category", "period": "FY27Q1"}
+    )
+    assert response.status_code == 200
+    body = response.json()
+    basis = body["basis"]
+    assert basis["metric"] == "returns"
+    assert basis["scope"] == "National"
+    assert 0 < body["headline"]["returns_rate"] < 1
+
+
+def test_returns_basis_states_pending_and_rejected_value(client):
+    response = client.get(
+        "/api/service/returns", params={"grain": "category", "period": "FY27Q1"}
+    )
+    basis = response.json()["basis"]
+    assert basis["pending_count"] == 1
+    assert basis["rejected_count"] == 1
+
+
+def test_returns_unknown_grain_is_rejected(client):
+    response = client.get(
+        "/api/service/returns", params={"grain": "outlet", "period": "FY27Q1"}
+    )
+    assert response.status_code == 422
+
+
+def test_near_expiry_returns_a_figure_with_its_basis(client):
+    response = client.get("/api/service/near-expiry", params={"grain": "category"})
+    assert response.status_code == 200
+    body = response.json()
+    basis = body["basis"]
+    assert basis["metric"] == "near_expiry"
+    assert basis["scope"] == "National"
+    assert basis["snapshot_date"] == "2026-06-29"  # the latest snapshot, resolved by default
+    assert basis["threshold_days"] == 30  # config default, kestrel/config.py
+    assert 0 < body["headline"]["near_expiry_rate"] < 1
+
+
+def test_near_expiry_snapshot_date_is_overridable(client):
+    response = client.get(
+        "/api/service/near-expiry",
+        params={"grain": "category", "snapshot_date": "2026-06-22"},
+    )
+    assert response.json()["basis"]["snapshot_date"] == "2026-06-22"
+
+
+def test_near_expiry_threshold_days_is_overridable(client):
+    response = client.get(
+        "/api/service/near-expiry",
+        params={"grain": "category", "threshold_days": 10},
+    )
+    assert response.json()["basis"]["threshold_days"] == 10
+
+
+def test_near_expiry_unknown_grain_is_rejected(client):
+    response = client.get(
+        "/api/service/near-expiry", params={"grain": "outlet"}
     )
     assert response.status_code == 422

@@ -63,3 +63,24 @@ def test_every_exclusion_is_recorded_in_the_ledger(curated):
     assert counts["X2"] == 1
     assert counts["X5"] == 1
     assert counts["N5"] == 2  # Bangalore and New Delhi were repaired
+
+
+def test_products_are_loaded_into_dim_product(curated):
+    row = curated.execute(
+        "SELECT sku_code, category, case_pack, list_price_inr "
+        "FROM dim_product WHERE product_id = 100"
+    ).fetchone()
+    assert row["sku_code"] == "SKU100"
+    assert row["category"] == "Snacks"
+    assert row["case_pack"] == 12
+    assert row["list_price_inr"] == 100
+
+
+def test_warehouses_are_loaded_into_dim_warehouse(curated):
+    row = curated.execute(
+        "SELECT warehouse_code, warehouse_name, region_id "
+        "FROM dim_warehouse WHERE warehouse_id = 2"
+    ).fetchone()
+    assert row["warehouse_code"] == "WH2"
+    assert row["warehouse_name"] == "South Hub"
+    assert row["region_id"] == 2

@@ -73,4 +73,6 @@ def test_default_steps_include_deliveries():
     from kestrel.transform.runner import _steps
 
     names = [step.name for step in _steps()]
-    assert names == ["s00_reference", "s20_orders", "s30_deliveries"]
+    assert names == [
+        "s00_reference", "s20_orders", "s30_deliveries", "s40_returns", "s50_inventory",
+    ]

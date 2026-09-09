@@ -20,7 +20,8 @@ EXCLUDED_ORDER_STATUSES = {"CANCELLED": "X4", "OPEN": "X4"}
 
 SELECT_LINES = """
 SELECT l.order_line_id, l.order_id, l.product_id, l.ordered_qty, l.qty_uom,
-       l.case_pack_at_order, l.delivered_qty, l.short_reason_code,
+       l.case_pack_at_order, l.delivered_qty, l.unit_price_inr,
+       l.line_discount_pct, l.short_reason_code,
        o.order_date, o.outlet_id, o.region_id, o.warehouse_id, o.route_id,
        o.order_status, o.source_system,
        p.case_pack AS master_case_pack
@@ -61,6 +62,15 @@ def run(src: sqlite3.Connection, dst: sqlite3.Connection, ledger: QualityLedger)
         case_pack = _resolve_case_pack(row, ledger)
         multiplier = case_pack if row["qty_uom"] == "CASE" else 1
 
+        # Returns can only happen against stock actually delivered, so the
+        # returns metric's dispatch_value is priced off delivered_qty, not
+        # ordered_qty (which is what the source line_value_inr reflects).
+        dispatched_value_inr = (
+            (row["delivered_qty"] or 0)
+            * (row["unit_price_inr"] or 0)
+            * (1 - (row["line_discount_pct"] or 0) / 100)
+        )
+
         rules: list[str] = []
         status_rule = EXCLUDED_ORDER_STATUSES.get(row["order_status"])
         if status_rule:
@@ -83,6 +93,7 @@ def run(src: sqlite3.Connection, dst: sqlite3.Connection, ledger: QualityLedger)
                 row["source_system"], row["qty_uom"], case_pack,
                 (row["ordered_qty"] or 0) * multiplier,
                 (row["delivered_qty"] or 0) * multiplier,
+                dispatched_value_inr,
                 row["short_reason_code"],
                 1 if rules else 0, ",".join(dict.fromkeys(rules)),
             )
@@ -94,8 +105,8 @@ def run(src: sqlite3.Connection, dst: sqlite3.Connection, ledger: QualityLedger)
             order_line_id, order_id, order_date, outlet_id, region_id,
             warehouse_id, route_id, product_id, order_status, source_system,
             qty_uom, case_pack, ordered_qty_eaches, delivered_qty_eaches,
-            short_reason_code, is_excluded, exclusion_rules
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            dispatched_value_inr, short_reason_code, is_excluded, exclusion_rules
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         records,
     )

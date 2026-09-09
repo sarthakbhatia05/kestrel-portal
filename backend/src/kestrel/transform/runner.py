@@ -35,13 +35,20 @@ class BuildResult:
 
 def _steps() -> list[Step]:
     """Imported lazily so the runner can be tested with no steps registered."""
-    from kestrel.transform.steps import s00_reference, s20_orders, s30_deliveries
+    from kestrel.transform.steps import (
+        s00_reference,
+        s20_orders,
+        s30_deliveries,
+        s40_returns,
+        s50_inventory,
+    )
 
-    return [s00_reference, s20_orders, s30_deliveries]
+    return [s00_reference, s20_orders, s30_deliveries, s40_returns, s50_inventory]
 
 
 COUNTED_TABLES = (
-    "dim_region", "dim_outlet", "fact_order_line", "fact_delivery", "quality_ledger",
+    "dim_region", "dim_outlet", "dim_product", "dim_warehouse", "fact_order_line",
+    "fact_delivery", "fact_return", "fact_inventory_snapshot", "quality_ledger",
 )
 
 

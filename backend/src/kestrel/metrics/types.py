@@ -87,3 +87,113 @@ class OtifResult(BaseModel):
     headline: OtifRow
     rows: list[OtifRow]
     basis: MetricBasis
+
+
+class ReturnsGrain(StrEnum):
+    """PRD 5.6: category, reason and region -- a different set from fill
+    rate/OTIF's region/warehouse/route/outlet, so it is its own enum rather
+    than an addition to Grain."""
+
+    CATEGORY = "category"
+    REASON = "reason"
+    REGION = "region"
+
+
+class ReturnsRequest(BaseModel):
+    grain: ReturnsGrain
+    period_start: date
+    period_end: date
+    period_label: str
+    region_id: int | None = None
+    include_excluded: bool = False
+    limit: int | None = Field(default=None, ge=1, le=500)
+    ascending: bool = False
+
+
+class ReturnsRow(BaseModel):
+    key: str
+    label: str
+    credit_note_value_inr: float
+    dispatch_value_inr: float
+    returns_rate: float | None
+    cold_chain_value_inr: float
+    cold_chain_rate: float | None
+
+
+class ReturnsBasis(BaseModel):
+    """Mirrors MetricBasis's shape but drops `unit` (returns has no
+    eaches/cases toggle) and adds the pending/rejected value PRD 5.6's
+    APPROVED-only rate would otherwise make invisible -- the same reasoning
+    as OTIF's unmeasured_count."""
+
+    metric: str
+    period_start: date
+    period_end: date
+    period_label: str
+    scope: str
+    exclusions_applied: list[str]
+    pending_count: int
+    pending_value_inr: float
+    rejected_count: int
+    rejected_value_inr: float
+    source_row_count: int
+
+
+class ReturnsResult(BaseModel):
+    headline: ReturnsRow
+    rows: list[ReturnsRow]
+    basis: ReturnsBasis
+
+
+class NearExpiryGrain(StrEnum):
+    """PRD C3.3: warehouse and category."""
+
+    WAREHOUSE = "warehouse"
+    CATEGORY = "category"
+
+
+class NearExpiryRequest(BaseModel):
+    """Inventory is a weekly snapshot, not a period range (PRD 5.5) -- there
+    is no period_start/period_end here, only the as-at snapshot_date."""
+
+    grain: NearExpiryGrain
+    snapshot_date: date
+    # PRD A2. Resolved by the router from config, like OTIF's tolerance_minutes,
+    # so the basis states the threshold that produced a given figure.
+    threshold_days: int
+    region_id: int | None = None
+    limit: int | None = Field(default=None, ge=1, le=500)
+    ascending: bool = False
+
+
+class NearExpiryRow(BaseModel):
+    key: str
+    label: str
+    near_expiry_cases: float
+    total_available_cases: float
+    near_expiry_rate: float | None
+    near_expiry_value_inr: float
+
+
+class NearExpiryBasis(BaseModel):
+    """No PRD 6.3 exclusion rule is scoped to warehouses or inventory, so
+    unlike every other basis this carries no exclusions_applied. Damaged and
+    blocked stock are surfaced here instead of folded into the rate (PRD
+    5.5: "reported separately"), the same way returns' basis surfaces
+    pending/rejected value."""
+
+    metric: str
+    snapshot_date: date
+    scope: str
+    threshold_days: int
+    damaged_cases: float
+    damaged_value_inr: float
+    blocked_cases: float
+    blocked_value_inr: float
+    source_row_count: int
+
+
+class NearExpiryResult(BaseModel):
+    headline: NearExpiryRow
+    rows: list[NearExpiryRow]
+    basis: NearExpiryBasis

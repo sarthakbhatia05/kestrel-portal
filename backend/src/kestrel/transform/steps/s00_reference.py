@@ -1,8 +1,16 @@
-"""Reference dimensions: regions and outlets.
+"""Reference dimensions: regions, outlets and products.
 
 Applies N5 (city canonicalisation), X1 (soft-deleted), X2 (test and
 migration) and X5 (duplicate outlets). X3 (closed outlets) is deliberately
 not applied here: it is period-scoped, so it belongs at query time.
+
+dim_product carries only what a metric needs -- category for returns,
+case_pack and list_price_inr for near-expiry -- it is not the full product
+master and gains columns only when a metric needs them.
+
+dim_warehouse is similarly minimal. Every warehouse in the source is ACTIVE,
+so no exclusion rule is applied here: PRD 6.3's exclusion rules (X1/X2/X3/X5)
+are all scoped to outlets, none to warehouses.
 """
 
 import sqlite3
@@ -109,4 +117,24 @@ def run(src: sqlite3.Connection, dst: sqlite3.Connection, ledger: QualityLedger)
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         records,
+    )
+
+    dst.executemany(
+        """
+        INSERT INTO dim_product (product_id, sku_code, category, case_pack, list_price_inr)
+        VALUES (?, ?, ?, ?, ?)
+        """,
+        src.execute(
+            "SELECT product_id, sku_code, category, case_pack, list_price_inr FROM products"
+        ),
+    )
+
+    dst.executemany(
+        """
+        INSERT INTO dim_warehouse (warehouse_id, warehouse_code, warehouse_name, region_id)
+        VALUES (?, ?, ?, ?)
+        """,
+        src.execute(
+            "SELECT warehouse_id, warehouse_code, warehouse_name, region_id FROM warehouses"
+        ),
     )

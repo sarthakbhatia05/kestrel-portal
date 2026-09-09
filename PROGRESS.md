@@ -13,14 +13,21 @@ Update it at the end of each slice, not continuously.
 
 | | |
 |---|---|
-| Slices complete | 2 of 4 planned (fill rate, OTIF) |
-| Backend tests | 63 passing, Ruff clean |
-| Curated build | 29.7s — 511,516 order lines, 76,889 deliveries, 41,477 ledger rows |
+| Slices complete | 4 (fill rate, OTIF, returns, near-expiry) — excursions next |
+| Backend tests | 121 passing, Ruff clean |
+| Curated build | 61.9s — 511,516 order lines, 76,889 deliveries, 14,000 returns, 131,040 inventory snapshots, 42,377 ledger rows |
 | Fill rate query | 0.10s over 68,329 lines (NF3 allows 2s) |
+| Returns query | 0.6s over 2,099 credit notes (NF3 allows 2s) |
+| Near-expiry query | 0.01s over 1,680 batches (NF3 allows 2s) |
 | Cold start | Verified from a clean `git clone`, README only |
 
-**Metrics live:** fill rate (PRD §5.2), OTIF (PRD §5.3).
-**Metrics not started:** excursions §5.4, near-expiry §5.5, returns §5.6.
+**Metrics live:** fill rate (PRD §5.2), OTIF (PRD §5.3), returns (PRD §5.6), near-expiry (PRD §5.5).
+**Metrics not started:** excursions §5.4.
+
+**Original "Slice 3" (PROGRESS.md, 2026-09-09) bundled returns and
+near-expiry.** Split into two on request: they don't share a fact table or
+grain, unlike fill rate/OTIF which shared `fact_delivery`. Returns went
+first as the rupee-denominated metric (PRD C3.4); near-expiry is next.
 
 ---
 
@@ -118,13 +125,116 @@ What now runs end to end:
 
 ---
 
+## Slice 3 — returns (done, 2026-09-09)
+
+Implemented directly (no design doc), following the fill-rate/OTIF pattern:
+transform step → metric → router → landing card, TDD throughout.
+
+What now runs end to end:
+
+- `s40_returns` transform step, producing `fact_return` (14,000 rows) from
+  `returns_credit_notes` joined to `orders` (region) and the new
+  `dim_product` (category, built by `s00_reference`).
+- `fact_order_line` gains `dispatched_value_inr` (`s20_orders`), priced off
+  **delivered**, not ordered, quantity — a return can only happen against
+  stock actually delivered, so it is the correct `dispatch_value`
+  denominator for PRD 5.6, not the existing ordered-basis `line_value_inr`.
+- One returns implementation, reporting `returns_rate` and a
+  `cold_chain_rate` sub-rate (RT01/RT06) separately, each against the same
+  dispatch-value denominator — the same separation OTIF applies to on-time
+  and in-full.
+- Landing view: a third card — headline rate, cold-chain sub-rate, worst
+  five categories, basis line stating pending/rejected value alongside the
+  rate (see below).
+
+### Found in the data (verified, not assumed)
+
+- **Only `APPROVED` credit notes count as leakage.** `status` also carries
+  `PENDING` (3,509) and `REJECTED` (3,556) — neither resulted in an actual
+  credit, so including them would overstate the rate with money never (or
+  not yet) given back. Both are still surfaced in the basis as a count and
+  value, so they are not silently invisible — the same principle as OTIF's
+  `unmeasured_count`.
+- **`return_qty` sign is inconsistent (N4): 900 of 14,000 rows are
+  negative.** `credit_note_value_inr` itself is never negative — only the
+  quantity needed normalising. Original sign kept for audit
+  (`return_qty_orig_sign`).
+- **Category and region breakdowns divide by a matching dispatch slice;
+  reason cannot.** A delivered order line carries no "reason it might later
+  be returned for," so reason-grain rows divide by the scope's total
+  dispatch value — each reads as that reason's share of all dispatch value
+  lost to returns, not a rate confined to that reason. Category and region
+  both exist on dispatched lines too, so those grains divide correctly.
+- **National returns_rate is ~0.03% of dispatch value** (₹6.6L credit
+  against ₹233 crore dispatched, FY27 Q1) — plausible for FMCG credit-note
+  leakage, not a flag.
+
+### Changed from the plan while building
+
+- **Curated build time roughly doubled, 29.7s → 61.7s**, from the added
+  `dispatched_value_inr` computation over 511k order lines and the new
+  returns step. Still comfortably under NF1's cold-start expectations;
+  worth watching if a later slice adds another full-table computed column.
+
+## Slice 4 — near-expiry (done, 2026-09-09)
+
+Implemented directly (no design doc), following the returns pattern: source
+table → transform step → metric → router → landing card, TDD throughout.
+
+What now runs end to end:
+
+- `s50_inventory` transform step, producing `fact_inventory_snapshot`
+  (131,040 rows, all 8 weekly snapshots in the source) from
+  `inventory_snapshots`, denormalising `region_id` from the new
+  `dim_warehouse` and `category` from `dim_product` the same way returns
+  denormalises onto `fact_return`.
+- `dim_product` gains `case_pack` and `list_price_inr` (near-expiry's own
+  columns, per the existing "gains columns only when a metric needs them"
+  convention).
+- One near-expiry implementation, reporting `near_expiry_rate` (available
+  cases within the threshold over total available cases) and the rupee
+  value at risk, by warehouse and category (PRD C3.3).
+- Unlike every other metric, the request carries `snapshot_date` instead of
+  a period range — inventory is a single weekly position, not a range to
+  sum over (PRD 5.5) — and the basis states that date, defaulting to the
+  latest snapshot present, never today.
+- Landing view: a fourth card — headline rate, value at risk, worst five
+  categories, basis line stating damaged/blocked value alongside the rate
+  (see below).
+
+### Found in the data (verified, not assumed)
+
+- **The source's own `available_cases` doesn't exclude damaged or blocked
+  stock**, only allocated (`on_hand_cases - allocated_cases`, confirmed
+  across sampled rows). PRD 5.5 requires damaged and blocked to be excluded
+  from available stock, so `fact_inventory_snapshot.available_cases` is
+  recomputed as `on_hand - allocated - damaged - blocked` rather than
+  copied from source. Damaged and blocked are still reported in the basis
+  (counts and value), the same way returns' basis surfaces pending/rejected
+  value.
+- **No PRD 6.3 exclusion rule is scoped to warehouses or inventory** — all
+  eight warehouses in the source are ACTIVE, and X1/X2/X3/X5 are all outlet
+  rules — so, unlike every other metric, near-expiry has no
+  `include_excluded`/`exclusions_applied` at all.
+- **National near-expiry rate is ~14.2% of available stock** (85,827 of
+  603,672 cases, ₹24.6 crore at risk, snapshot 2026-06-29) — high enough to
+  be a genuine finding, not a rounding artefact; product shelf lives in the
+  master range from single digits to hundreds of days, so a material tail
+  is always inside 30 days of expiry.
+
+### Changed from the plan while building
+
+- **Prices for near-expiry value are the current product master
+  (`list_price_inr`), not resolved as-at any order date (N6).** Stock
+  sitting in a warehouse has no order event to resolve a price history
+  window against, so N6's as-at-order-date rule doesn't apply here — a
+  scope decision, not a gap.
+
 ## Next
 
-**Slice 3 — returns (§5.6) and near-expiry (§5.5).** The loss side of the
-landing view's promise. Returns is the only rupee-denominated metric. Inventory
-is a weekly snapshot and must be labelled as-at the snapshot date, never today.
+**Slice 5 — excursions (§5.4).** The remaining C3 requirement.
 
-**Slice 4 — ask-anything (C4).** Deliberately last. With one metric to route
+**Slice 6 — ask-anything (C4).** Deliberately last. With one metric to route
 to, an intent resolver has nothing to choose between and the guarantee that
 matters — the LLM resolves intent into a validated request, never sees a row,
 never emits a number — is unconvincing. With five metrics it is the sharpest
