@@ -6,13 +6,13 @@ from fastapi.testclient import TestClient
 from kestrel.dependencies import get_curated_db
 from kestrel.main import create_app
 from kestrel.transform.runner import build
-from kestrel.transform.steps import s00_reference, s20_orders
+from kestrel.transform.steps import s00_reference, s20_orders, s30_deliveries
 
 
 @pytest.fixture
 def client(tmp_path, source_db):
     curated = tmp_path / "curated.db"
-    build(source_db, curated, steps=[s00_reference, s20_orders])
+    build(source_db, curated, steps=[s00_reference, s20_orders, s30_deliveries])
 
     def _override():
         conn = sqlite3.connect(curated)
@@ -72,3 +72,49 @@ def test_malformed_period_returns_a_structured_error(client):
     )
     assert response.status_code == 400
     assert response.json()["error"]["code"] == "INVALID_PERIOD"
+
+
+def test_otif_returns_a_figure_with_its_basis(client):
+    response = client.get(
+        "/api/service/otif", params={"grain": "outlet", "period": "FY27Q1"}
+    )
+    assert response.status_code == 200
+    body = response.json()
+    basis = body["basis"]
+    assert basis["metric"] == "otif"
+    assert basis["scope"] == "National"
+    assert basis["tolerance_minutes"] == 30  # config default, kestrel/config.py
+
+
+def test_otif_tolerance_is_overridable_and_reflected_in_the_basis(client):
+    response = client.get(
+        "/api/service/otif",
+        params={"grain": "outlet", "period": "FY27Q1", "tolerance_minutes": 5},
+    )
+    assert response.json()["basis"]["tolerance_minutes"] == 5
+
+
+def test_otif_headline_reports_due_on_time_and_in_full_separately(client):
+    response = client.get(
+        "/api/service/otif", params={"grain": "outlet", "period": "FY27Q1"}
+    )
+    headline = response.json()["headline"]
+    assert headline["due_count"] == 3
+    assert headline["on_time_count"] == 1
+    assert headline["in_full_count"] == 1
+    assert headline["otif_count"] == 0
+
+
+def test_otif_unknown_grain_is_rejected(client):
+    response = client.get(
+        "/api/service/otif", params={"grain": "salesperson", "period": "FY27Q1"}
+    )
+    assert response.status_code == 422
+
+
+def test_otif_tolerance_out_of_range_is_rejected(client):
+    response = client.get(
+        "/api/service/otif",
+        params={"grain": "outlet", "period": "FY27Q1", "tolerance_minutes": -1},
+    )
+    assert response.status_code == 422
