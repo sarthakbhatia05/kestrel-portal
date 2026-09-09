@@ -67,3 +67,10 @@ def test_failed_build_leaves_previous_curated_db_intact(tmp_path):
 
     conn = sqlite3.connect(curated)
     assert conn.execute("SELECT count(*) FROM dim_region").fetchone()[0] == 1
+
+
+def test_default_steps_include_deliveries():
+    from kestrel.transform.runner import _steps
+
+    names = [step.name for step in _steps()]
+    assert names == ["s00_reference", "s20_orders", "s30_deliveries"]
