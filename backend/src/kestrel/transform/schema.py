@@ -74,4 +74,22 @@ CREATE TABLE fact_order_line (
 CREATE INDEX ix_fol_date ON fact_order_line (order_date);
 CREATE INDEX ix_fol_outlet ON fact_order_line (outlet_id);
 CREATE INDEX ix_fol_region ON fact_order_line (region_id);
+
+CREATE TABLE fact_delivery (
+    delivery_id           INTEGER PRIMARY KEY,
+    order_id              INTEGER NOT NULL,
+    planned_arrival       TEXT NOT NULL,
+    delay_minutes         REAL,
+    outlet_id             INTEGER NOT NULL,
+    region_id             INTEGER,
+    warehouse_id          INTEGER,
+    route_id              INTEGER,
+    ordered_qty_eaches    REAL NOT NULL,
+    delivered_qty_eaches  REAL NOT NULL,
+    is_excluded           INTEGER NOT NULL DEFAULT 0,
+    exclusion_rules       TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX ix_fd_planned ON fact_delivery (planned_arrival);
+CREATE INDEX ix_fd_outlet ON fact_delivery (outlet_id);
+CREATE INDEX ix_fd_region ON fact_delivery (region_id);
 """
