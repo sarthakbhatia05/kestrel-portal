@@ -38,7 +38,8 @@ Activate it — macOS/Linux `source .venv/bin/activate`, Windows PowerShell
 `.venv\Scripts\Activate.ps1`, Git Bash on Windows `source .venv/Scripts/activate` — then:
 
 ```bash
-pip install -e ".[dev]"
+pip install -r requirements-dev.txt
+pip install -e . --no-deps
 python -m kestrel.transform build
 ```
 
