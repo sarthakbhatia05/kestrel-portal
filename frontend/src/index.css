@@ -110,3 +110,22 @@ th:not(:first-child) {
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
+
+.submetrics {
+  display: flex;
+  gap: 1.5rem;
+  margin: 0 0 1.25rem;
+}
+.submetrics dt {
+  font-size: 0.6875rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  margin: 0;
+}
+.submetrics dd {
+  margin: 0;
+  font-size: 1.125rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
