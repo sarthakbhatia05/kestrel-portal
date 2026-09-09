@@ -143,6 +143,10 @@ def compute(conn: sqlite3.Connection, request: NearExpiryRequest) -> NearExpiryR
             )
         )
 
+    if request.q:
+        q_lower = request.q.lower()
+        rows = [r for r in rows if q_lower in r.label.lower()]
+
     rows.sort(key=lambda r: r.near_expiry_rate, reverse=not request.ascending)
     if request.limit:
         rows = rows[: request.limit]

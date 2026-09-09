@@ -36,6 +36,7 @@ def get_fill_rate(
     include_excluded: bool = False,
     ascending: bool = False,
     limit: int | None = Query(default=None, ge=1, le=500),
+    q: str | None = Query(default=None, max_length=200),
 ) -> MetricResult:
     """Fill rate for a period. PRD 5.2.
 
@@ -54,6 +55,7 @@ def get_fill_rate(
             include_excluded=include_excluded,
             ascending=ascending,
             limit=limit,
+            q=q,
         ),
     )
 
@@ -68,6 +70,7 @@ def get_otif(
     ascending: bool = False,
     limit: int | None = Query(default=None, ge=1, le=500),
     tolerance_minutes: int | None = Query(default=None, ge=0, le=1440),
+    q: str | None = Query(default=None, max_length=200),
 ) -> OtifResult:
     """OTIF for a period. PRD 5.3.
 
@@ -90,6 +93,7 @@ def get_otif(
             ascending=ascending,
             limit=limit,
             tolerance_minutes=resolved_tolerance,
+            q=q,
         ),
     )
 
@@ -103,6 +107,7 @@ def get_returns(
     include_excluded: bool = False,
     ascending: bool = False,
     limit: int | None = Query(default=None, ge=1, le=500),
+    q: str | None = Query(default=None, max_length=200),
 ) -> ReturnsResult:
     """Returns and credit note leakage for a period. PRD 5.6."""
     return returns.compute(
@@ -116,6 +121,7 @@ def get_returns(
             include_excluded=include_excluded,
             ascending=ascending,
             limit=limit,
+            q=q,
         ),
     )
 
@@ -129,6 +135,7 @@ def get_near_expiry(
     ascending: bool = False,
     limit: int | None = Query(default=None, ge=1, le=500),
     threshold_days: int | None = Query(default=None, ge=1, le=365),
+    q: str | None = Query(default=None, max_length=200),
 ) -> NearExpiryResult:
     """Near-expiry stock as-at the latest inventory snapshot. PRD 5.5.
 
@@ -161,5 +168,6 @@ def get_near_expiry(
             region_id=region_id,
             ascending=ascending,
             limit=limit,
+            q=q,
         ),
     )

@@ -105,3 +105,8 @@ def test_basis_states_the_tolerance_used(conn):
     basis = otif.compute(conn, _request(tolerance_minutes=45)).basis
     assert basis.tolerance_minutes == 45
     assert basis.metric == "otif"
+
+
+def test_q_filters_rows_by_case_insensitive_label_substring(conn):
+    result = otif.compute(conn, _request(q="fine"))
+    assert {row.key for row in result.rows} == {"2"}

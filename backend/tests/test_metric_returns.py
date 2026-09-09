@@ -75,6 +75,11 @@ def test_category_grain_breaks_down_correctly(conn):
     assert by_key["Beverages"].returns_rate == pytest.approx(0.05)
 
 
+def test_q_filters_rows_by_case_insensitive_label_substring(conn):
+    result = returns.compute(conn, _request(grain=ReturnsGrain.CATEGORY, q="snack"))
+    assert {row.key for row in result.rows} == {"Snacks"}
+
+
 def test_reason_grain_divides_by_the_scope_total_dispatch_value(conn):
     """Reason has no dispatch-side equivalent, so every reason row divides
     by the whole scope's dispatch value (2000), not a per-reason slice."""

@@ -25,6 +25,8 @@ export interface MetricRow {
 
 export interface MetricResult {
   headline: number | null;
+  numerator: number;
+  denominator: number;
   rows: MetricRow[];
   basis: MetricBasis;
 }

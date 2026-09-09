@@ -95,11 +95,17 @@ def compute(conn: sqlite3.Connection, request: MetricRequest) -> OtifResult:
     limit_sql = "LIMIT ?" if request.limit else ""
 
     # `?` order follows the SQL text left to right: the two tolerance
-    # placeholders in SELECT come first, then the WHERE params, then LIMIT.
+    # placeholders in SELECT come first, then the WHERE params, then the
+    # optional search and LIMIT params (both appear only in HAVING/LIMIT).
     select_params = [tolerance, tolerance]
-    breakdown_params = [
-        *select_params, *where_params, *([request.limit] if request.limit else [])
-    ]
+    having_clauses = ["due_count > 0"]
+    breakdown_params = [*select_params, *where_params]
+    if request.q:
+        having_clauses.append("LOWER(label) LIKE ?")
+        breakdown_params.append(f"%{request.q.lower()}%")
+    having = " AND ".join(having_clauses)
+    if request.limit:
+        breakdown_params.append(request.limit)
     headline_params = [*select_params, *where_params]
 
     sql = f"""
@@ -114,7 +120,7 @@ def compute(conn: sqlite3.Connection, request: MetricRequest) -> OtifResult:
         {grain_join}
         WHERE {where}
         GROUP BY {key_source}, {label_source}
-        HAVING due_count > 0
+        HAVING {having}
         ORDER BY (1.0 * otif_count / due_count) {order}
         {limit_sql}
     """  # noqa: S608 - every fragment comes from the allowlist above; only `?` is parameterised

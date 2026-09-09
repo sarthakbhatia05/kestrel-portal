@@ -85,6 +85,11 @@ def test_category_grain_breaks_down_correctly(conn):
     assert by_key["Beverages"].near_expiry_rate == pytest.approx(0.0)
 
 
+def test_q_filters_rows_by_case_insensitive_label_substring(conn):
+    result = near_expiry.compute(conn, _request(grain=NearExpiryGrain.CATEGORY, q="snack"))
+    assert {row.key for row in result.rows} == {"Snacks"}
+
+
 def test_warehouse_grain_breaks_down_correctly(conn):
     result = near_expiry.compute(conn, _request(grain=NearExpiryGrain.WAREHOUSE))
     by_key = {row.label: row for row in result.rows}

@@ -35,6 +35,12 @@ def test_headline_is_delivered_over_ordered_in_eaches(conn):
     assert result.headline == pytest.approx((108 + 50 + 60 + 12) / (120 + 50 + 120 + 12))
 
 
+def test_result_carries_the_raw_totals_behind_the_headline(conn):
+    result = fill_rate.compute(conn, _request())
+    assert result.numerator == pytest.approx(108 + 50 + 60 + 12)
+    assert result.denominator == pytest.approx(120 + 50 + 120 + 12)
+
+
 def test_cancelled_and_deleted_and_out_of_period_lines_are_absent(conn):
     result = fill_rate.compute(conn, _request())
     keys = {row.key for row in result.rows}
@@ -91,3 +97,14 @@ def test_closed_outlet_is_excluded_from_a_period_after_its_closure(conn):
     """X3 is period-scoped: outlet 3 closed on 2025-06-30."""
     result = fill_rate.compute(conn, _request())
     assert "3" not in {row.key for row in result.rows}
+
+
+def test_q_filters_rows_by_case_insensitive_label_substring(conn):
+    result = fill_rate.compute(conn, _request(q="good"))
+    assert {row.key for row in result.rows} == {"1"}
+
+
+def test_q_does_not_change_the_headline(conn):
+    default = fill_rate.compute(conn, _request())
+    searched = fill_rate.compute(conn, _request(q="good"))
+    assert searched.headline == default.headline

@@ -1,7 +1,12 @@
+import { useState } from "react";
+
 import { useQuery } from "@tanstack/react-query";
 
 import { fetchNearExpiry } from "../../api/client";
 import type { NearExpiryBasis } from "../../api/types";
+import { InfoTooltip } from "../../components/InfoTooltip";
+import { SearchInput } from "../../components/SearchInput";
+import { useDebouncedValue } from "../../lib/useDebouncedValue";
 
 const percent = (value: number | null) =>
   value === null ? "—" : `${(value * 100).toFixed(1)}%`;
@@ -43,18 +48,25 @@ function NearExpiryBasisLine({ basis }: { basis: NearExpiryBasis }) {
 }
 
 export function NearExpiryCard({ regionId }: Props) {
+  const [search, setSearch] = useState("");
+  const q = useDebouncedValue(search, 300);
+
   const { data, isPending, error } = useQuery({
-    queryKey: ["near-expiry", regionId],
+    queryKey: ["near-expiry", regionId, q],
     queryFn: () =>
       fetchNearExpiry({
         grain: "category",
         regionId,
         ascending: false,
         limit: 5,
+        q: q || undefined,
       }),
   });
 
-  if (isPending) return <section className="card">Loading near-expiry stock…</section>;
+  if (isPending)
+    return (
+      <section className="card card--loading">Loading near-expiry stock…</section>
+    );
   if (error)
     return (
       <section className="card card--error">
@@ -66,7 +78,10 @@ export function NearExpiryCard({ regionId }: Props) {
   return (
     <section className="card">
       <header className="card__head">
-        <h2>Near-expiry stock</h2>
+        <div className="card__title">
+          <h2>Near-expiry stock</h2>
+          <InfoTooltip text="Available stock within the expiry threshold, and the rupee value at risk." />
+        </div>
       </header>
 
       <p className="headline">{percent(data.headline.near_expiry_rate)}</p>
@@ -84,27 +99,35 @@ export function NearExpiryCard({ regionId }: Props) {
 
       <NearExpiryBasisLine basis={data.basis} />
 
-      <h3>Worst performing categories</h3>
-      <table>
-        <thead>
-          <tr>
-            <th scope="col">Category</th>
-            <th scope="col">Near-expiry rate</th>
-            <th scope="col">Near-expiry cases</th>
-            <th scope="col">Available cases</th>
-          </tr>
-        </thead>
-        <tbody>
-          {data.rows.map((row) => (
-            <tr key={row.key}>
-              <td>{row.label}</td>
-              <td>{percent(row.near_expiry_rate)}</td>
-              <td>{row.near_expiry_cases.toLocaleString()}</td>
-              <td>{row.total_available_cases.toLocaleString()}</td>
+      <div className="table-head">
+        <h3>{q ? "Matching categories" : "Worst performing categories"}</h3>
+        <SearchInput value={search} onChange={setSearch} placeholder="Search categories" />
+      </div>
+      <div className="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th scope="col">Category</th>
+              <th scope="col">Near-expiry rate</th>
+              <th scope="col">Near-expiry cases</th>
+              <th scope="col">Available cases</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {data.rows.map((row) => (
+              <tr key={row.key}>
+                <td>{row.label}</td>
+                <td>{percent(row.near_expiry_rate)}</td>
+                <td>{row.near_expiry_cases.toLocaleString()}</td>
+                <td>{row.total_available_cases.toLocaleString()}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {data.rows.length === 0 && q && (
+        <p className="empty">No categories match &ldquo;{q}&rdquo;.</p>
+      )}
     </section>
   );
 }

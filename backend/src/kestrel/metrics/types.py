@@ -32,6 +32,10 @@ class MetricRequest(BaseModel):
     # "use the configured default" and is resolved by the router, not here,
     # so the basis can state the tolerance that actually produced a figure.
     tolerance_minutes: int | None = None
+    # Case-insensitive substring match on the breakdown row's label (outlet
+    # name, region name, etc). Filters which rows are returned; never
+    # changes the headline, which stays a total over the whole scope.
+    q: str | None = Field(default=None, max_length=200)
 
 
 class MetricBasis(BaseModel):
@@ -64,6 +68,11 @@ class MetricRow(BaseModel):
 
 class MetricResult(BaseModel):
     headline: float | None
+    # The raw totals behind the headline ratio (e.g. delivered/ordered
+    # eaches or cases) -- restated here for the same reason every basis is:
+    # a rate without the numbers behind it invites the wrong question.
+    numerator: float
+    denominator: float
     rows: list[MetricRow]
     basis: MetricBasis
 
@@ -108,6 +117,7 @@ class ReturnsRequest(BaseModel):
     include_excluded: bool = False
     limit: int | None = Field(default=None, ge=1, le=500)
     ascending: bool = False
+    q: str | None = Field(default=None, max_length=200)
 
 
 class ReturnsRow(BaseModel):
@@ -164,6 +174,7 @@ class NearExpiryRequest(BaseModel):
     region_id: int | None = None
     limit: int | None = Field(default=None, ge=1, le=500)
     ascending: bool = False
+    q: str | None = Field(default=None, max_length=200)
 
 
 class NearExpiryRow(BaseModel):

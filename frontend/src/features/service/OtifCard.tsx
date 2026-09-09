@@ -1,7 +1,12 @@
+import { useState } from "react";
+
 import { useQuery } from "@tanstack/react-query";
 
 import { fetchOtif } from "../../api/client";
 import { BasisLine } from "../../components/BasisLine";
+import { InfoTooltip } from "../../components/InfoTooltip";
+import { SearchInput } from "../../components/SearchInput";
+import { useDebouncedValue } from "../../lib/useDebouncedValue";
 
 const percent = (value: number | null) =>
   value === null ? "—" : `${(value * 100).toFixed(1)}%`;
@@ -12,8 +17,11 @@ interface Props {
 }
 
 export function OtifCard({ regionId, period }: Props) {
+  const [search, setSearch] = useState("");
+  const q = useDebouncedValue(search, 300);
+
   const { data, isPending, error } = useQuery({
-    queryKey: ["otif", regionId, period],
+    queryKey: ["otif", regionId, period, q],
     queryFn: () =>
       fetchOtif({
         grain: "outlet",
@@ -21,10 +29,12 @@ export function OtifCard({ regionId, period }: Props) {
         period,
         ascending: true,
         limit: 5,
+        q: q || undefined,
       }),
   });
 
-  if (isPending) return <section className="card">Loading OTIF…</section>;
+  if (isPending)
+    return <section className="card card--loading">Loading OTIF…</section>;
   if (error)
     return (
       <section className="card card--error">
@@ -36,7 +46,10 @@ export function OtifCard({ regionId, period }: Props) {
   return (
     <section className="card">
       <header className="card__head">
-        <h2>On-time in-full</h2>
+        <div className="card__title">
+          <h2>On-time in-full</h2>
+          <InfoTooltip text="Deliveries that arrived on time and in full, split into their two component rates." />
+        </div>
       </header>
 
       <p className="headline">{percent(data.headline.otif)}</p>
@@ -54,29 +67,37 @@ export function OtifCard({ regionId, period }: Props) {
 
       <BasisLine basis={data.basis} rowNoun="deliveries" />
 
-      <h3>Worst performing outlets</h3>
-      <table>
-        <thead>
-          <tr>
-            <th scope="col">Outlet</th>
-            <th scope="col">OTIF</th>
-            <th scope="col">On time</th>
-            <th scope="col">In full</th>
-            <th scope="col">Due</th>
-          </tr>
-        </thead>
-        <tbody>
-          {data.rows.map((row) => (
-            <tr key={row.key}>
-              <td>{row.label}</td>
-              <td>{percent(row.otif)}</td>
-              <td>{percent(row.on_time_rate)}</td>
-              <td>{percent(row.in_full_rate)}</td>
-              <td>{row.due_count.toLocaleString()}</td>
+      <div className="table-head">
+        <h3>{q ? "Matching outlets" : "Worst performing outlets"}</h3>
+        <SearchInput value={search} onChange={setSearch} placeholder="Search outlets" />
+      </div>
+      <div className="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th scope="col">Outlet</th>
+              <th scope="col">OTIF</th>
+              <th scope="col">On time</th>
+              <th scope="col">In full</th>
+              <th scope="col">Due</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {data.rows.map((row) => (
+              <tr key={row.key}>
+                <td>{row.label}</td>
+                <td>{percent(row.otif)}</td>
+                <td>{percent(row.on_time_rate)}</td>
+                <td>{percent(row.in_full_rate)}</td>
+                <td>{row.due_count.toLocaleString()}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {data.rows.length === 0 && q && (
+        <p className="empty">No outlets match &ldquo;{q}&rdquo;.</p>
+      )}
     </section>
   );
 }

@@ -14,7 +14,8 @@ Update it at the end of each slice, not continuously.
 | | |
 |---|---|
 | Slices complete | 4 (fill rate, OTIF, returns, near-expiry) — excursions next |
-| Backend tests | 121 passing, Ruff clean |
+| Backend tests | 115 passing, Ruff clean |
+| Frontend | tsc and oxlint clean; no test suite yet (see Known gaps) |
 | Curated build | 61.9s — 511,516 order lines, 76,889 deliveries, 14,000 returns, 131,040 inventory snapshots, 42,377 ledger rows |
 | Fill rate query | 0.10s over 68,329 lines (NF3 allows 2s) |
 | Returns query | 0.6s over 2,099 credit notes (NF3 allows 2s) |
@@ -229,6 +230,60 @@ What now runs end to end:
   sitting in a warehouse has no order event to resolve a price history
   window against, so N6's as-at-order-date rule doesn't apply here — a
   scope decision, not a gap.
+
+## UI redesign, search, and a concurrency fix (done, 2026-09-09)
+
+Not a slice — no new metric, done directly in chat (bounded path, no design
+doc). Prompted by the landing view being functionally complete but visually
+default: system font, flat grey-on-white, no hierarchy between the four
+cards.
+
+What changed:
+
+- **Visual system**: IBM Plex Sans/Mono (numbers are always mono — an
+  ops-console convention, not decoration), a slate-blue/red accent pair
+  reflecting the page's own framing (service loss vs money loss) as a
+  left-edge bar per card, sentence-case labels throughout (the previous
+  uppercase-letterspaced section headers were the generic-page tell removed).
+  The single worst row in every table is flagged (tint + left tick) rather
+  than left for the reader to find — the exception-surface point (`LandingView.tsx`'s own
+  comment on G2/C2.3) made visible, not just structurally true.
+- **All four cards now share one grid** (`display: contents` on the
+  service/money wrapper sections) so every card stretches to match the
+  single tallest one, at every screen size — not just within its own row.
+  Getting here took two false starts, both instructive: first pass left
+  cards at natural height, which misaligned bottom edges across a row;
+  stretching to fix that left the shorter card full of dead white space.
+  The actual fix was structural — fill rate was the one card missing a
+  submetrics row the other three had, so its card was genuinely shorter,
+  not just differently laid out. It now shows delivered/ordered totals
+  (`MetricResult.numerator`/`.denominator`, computed all along, just not
+  previously returned), closing the gap honestly instead of papering over
+  it with CSS.
+- **Search**: each table's `q` param does a case-insensitive substring
+  match against the full outlet/category set, applied before ranking and
+  the worst-5 limit — not a client-side filter over the 5 rows already
+  shown. `fill_rate`/`otif` do it in SQL (`HAVING label LIKE ?`);
+  `returns`/`near_expiry` already built their rows in Python, so it's a
+  list-comprehension filter there instead. Frontend debounces 300ms.
+- **Info tooltips**: one plain-language sentence per metric title, on
+  hover/focus, sourced from the PRD's own definitions.
+
+### Found while verifying, not designing
+
+- **The curated DB connection broke under concurrent requests** — roughly
+  10–25% of page loads threw 500s, present before any of today's changes
+  and not noticed until stress-testing the new UI surfaced it repeatedly.
+  `get_curated_db` opens one `sqlite3.Connection` per request, but FastAPI
+  resolves a sync dependency and runs the sync endpoint body via
+  `run_in_threadpool`, which can pick different worker threads for the same
+  request; `sqlite3.Connection` defaults to rejecting exactly that. Fixed
+  with `check_same_thread=False` on `open_curated_readonly` only (not
+  `curated_connection`/`source_connection`, which are single-threaded build
+  code) — safe here because the connection is still only ever used
+  sequentially within one request, never concurrently from two threads at
+  once. Confirmed with 60 concurrent requests across all four endpoints,
+  all 200; regression test added in `test_database.py`.
 
 ## Next
 

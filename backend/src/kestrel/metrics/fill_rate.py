@@ -87,9 +87,16 @@ def compute(conn: sqlite3.Connection, request: MetricRequest) -> MetricResult:
     order = "ASC" if request.ascending else "DESC"
     limit_sql = "LIMIT ?" if request.limit else ""
     # The filters and their parameters are shared by both queries below; only
-    # the breakdown query appends a LIMIT parameter.
+    # the breakdown query appends a search and/or a LIMIT parameter.
     where = " AND ".join(filters)
-    breakdown_params = [*params, request.limit] if request.limit else params
+    having_clauses = [f"{denominator} > 0"]
+    breakdown_params = list(params)
+    if request.q:
+        having_clauses.append("LOWER(label) LIKE ?")
+        breakdown_params.append(f"%{request.q.lower()}%")
+    having = " AND ".join(having_clauses)
+    if request.limit:
+        breakdown_params.append(request.limit)
 
     sql = f"""
         SELECT CAST({key_source} AS TEXT) AS key,
@@ -102,7 +109,7 @@ def compute(conn: sqlite3.Connection, request: MetricRequest) -> MetricResult:
         {grain_join}
         WHERE {where}
         GROUP BY {key_source}, {label_source}
-        HAVING {denominator} > 0
+        HAVING {having}
         ORDER BY (1.0 * {numerator} / {denominator}) {order}
         {limit_sql}
     """  # noqa: S608 - every fragment comes from the allowlist above
@@ -134,6 +141,8 @@ def compute(conn: sqlite3.Connection, request: MetricRequest) -> MetricResult:
 
     return MetricResult(
         headline=headline,
+        numerator=totals["numerator"] or 0,
+        denominator=denom,
         rows=rows,
         basis=MetricBasis(
             metric=METRIC,

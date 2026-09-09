@@ -17,6 +17,7 @@ export interface FillRateParams {
   ascending?: boolean;
   limit?: number;
   includeExcluded?: boolean;
+  q?: string;
 }
 
 export class ApiError extends Error {
@@ -54,6 +55,7 @@ export function fetchFillRate(params: FillRateParams = {}): Promise<MetricResult
     ascending: params.ascending,
     limit: params.limit,
     include_excluded: params.includeExcluded,
+    q: params.q,
   });
 }
 
@@ -65,6 +67,7 @@ export interface OtifParams {
   limit?: number;
   includeExcluded?: boolean;
   toleranceMinutes?: number;
+  q?: string;
 }
 
 export function fetchOtif(params: OtifParams = {}): Promise<OtifResult> {
@@ -76,6 +79,7 @@ export function fetchOtif(params: OtifParams = {}): Promise<OtifResult> {
     limit: params.limit,
     include_excluded: params.includeExcluded,
     tolerance_minutes: params.toleranceMinutes,
+    q: params.q,
   });
 }
 
@@ -86,6 +90,7 @@ export interface ReturnsParams {
   ascending?: boolean;
   limit?: number;
   includeExcluded?: boolean;
+  q?: string;
 }
 
 export function fetchReturns(params: ReturnsParams = {}): Promise<ReturnsResult> {
@@ -96,6 +101,7 @@ export function fetchReturns(params: ReturnsParams = {}): Promise<ReturnsResult>
     ascending: params.ascending,
     limit: params.limit,
     include_excluded: params.includeExcluded,
+    q: params.q,
   });
 }
 
@@ -106,6 +112,7 @@ export interface NearExpiryParams {
   ascending?: boolean;
   limit?: number;
   thresholdDays?: number;
+  q?: string;
 }
 
 export function fetchNearExpiry(params: NearExpiryParams = {}): Promise<NearExpiryResult> {
@@ -116,5 +123,6 @@ export function fetchNearExpiry(params: NearExpiryParams = {}): Promise<NearExpi
     ascending: params.ascending,
     limit: params.limit,
     threshold_days: params.thresholdDays,
+    q: params.q,
   });
 }

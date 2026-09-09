@@ -1,7 +1,12 @@
+import { useState } from "react";
+
 import { useQuery } from "@tanstack/react-query";
 
 import { fetchReturns } from "../../api/client";
 import type { ReturnsBasis } from "../../api/types";
+import { InfoTooltip } from "../../components/InfoTooltip";
+import { SearchInput } from "../../components/SearchInput";
+import { useDebouncedValue } from "../../lib/useDebouncedValue";
 
 const percent = (value: number | null) =>
   value === null ? "—" : `${(value * 100).toFixed(2)}%`;
@@ -44,8 +49,11 @@ function ReturnsBasisLine({ basis }: { basis: ReturnsBasis }) {
 }
 
 export function ReturnsCard({ regionId, period }: Props) {
+  const [search, setSearch] = useState("");
+  const q = useDebouncedValue(search, 300);
+
   const { data, isPending, error } = useQuery({
-    queryKey: ["returns", regionId, period],
+    queryKey: ["returns", regionId, period, q],
     queryFn: () =>
       fetchReturns({
         grain: "category",
@@ -53,10 +61,12 @@ export function ReturnsCard({ regionId, period }: Props) {
         period,
         ascending: false,
         limit: 5,
+        q: q || undefined,
       }),
   });
 
-  if (isPending) return <section className="card">Loading returns…</section>;
+  if (isPending)
+    return <section className="card card--loading">Loading returns…</section>;
   if (error)
     return (
       <section className="card card--error">
@@ -68,7 +78,10 @@ export function ReturnsCard({ regionId, period }: Props) {
   return (
     <section className="card">
       <header className="card__head">
-        <h2>Returns and credit note leakage</h2>
+        <div className="card__title">
+          <h2>Returns and credit note leakage</h2>
+          <InfoTooltip text="Value credited back on approved returns, as a share of what was dispatched." />
+        </div>
       </header>
 
       <p className="headline">{percent(data.headline.returns_rate)}</p>
@@ -86,27 +99,35 @@ export function ReturnsCard({ regionId, period }: Props) {
 
       <ReturnsBasisLine basis={data.basis} />
 
-      <h3>Worst performing categories</h3>
-      <table>
-        <thead>
-          <tr>
-            <th scope="col">Category</th>
-            <th scope="col">Returns rate</th>
-            <th scope="col">Credit notes</th>
-            <th scope="col">Dispatch value</th>
-          </tr>
-        </thead>
-        <tbody>
-          {data.rows.map((row) => (
-            <tr key={row.key}>
-              <td>{row.label}</td>
-              <td>{percent(row.returns_rate)}</td>
-              <td>{inr(row.credit_note_value_inr)}</td>
-              <td>{inr(row.dispatch_value_inr)}</td>
+      <div className="table-head">
+        <h3>{q ? "Matching categories" : "Worst performing categories"}</h3>
+        <SearchInput value={search} onChange={setSearch} placeholder="Search categories" />
+      </div>
+      <div className="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th scope="col">Category</th>
+              <th scope="col">Returns rate</th>
+              <th scope="col">Credit notes</th>
+              <th scope="col">Dispatch value</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {data.rows.map((row) => (
+              <tr key={row.key}>
+                <td>{row.label}</td>
+                <td>{percent(row.returns_rate)}</td>
+                <td>{inr(row.credit_note_value_inr)}</td>
+                <td>{inr(row.dispatch_value_inr)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {data.rows.length === 0 && q && (
+        <p className="empty">No categories match &ldquo;{q}&rdquo;.</p>
+      )}
     </section>
   );
 }
