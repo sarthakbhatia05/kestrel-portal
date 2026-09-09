@@ -1,4 +1,4 @@
-import type { Grain, MetricResult, Unit } from "./types";
+import type { Grain, MetricResult, OtifResult, Unit } from "./types";
 
 export interface FillRateParams {
   grain?: Grain;
@@ -45,5 +45,27 @@ export function fetchFillRate(params: FillRateParams = {}): Promise<MetricResult
     ascending: params.ascending,
     limit: params.limit,
     include_excluded: params.includeExcluded,
+  });
+}
+
+export interface OtifParams {
+  grain?: Grain;
+  regionId?: number | null;
+  period?: string;
+  ascending?: boolean;
+  limit?: number;
+  includeExcluded?: boolean;
+  toleranceMinutes?: number;
+}
+
+export function fetchOtif(params: OtifParams = {}): Promise<OtifResult> {
+  return get<OtifResult>("/api/service/otif", {
+    grain: params.grain ?? "outlet",
+    region_id: params.regionId,
+    period: params.period ?? "latest",
+    ascending: params.ascending,
+    limit: params.limit,
+    include_excluded: params.includeExcluded,
+    tolerance_minutes: params.toleranceMinutes,
   });
 }
