@@ -43,10 +43,20 @@ def open_curated_readonly(path: Path) -> sqlite3.Connection:
 
     Caller closes. Used by FastAPI dependencies, which cannot use a
     context manager across the request boundary.
+
+    check_same_thread=False: FastAPI resolves a sync dependency and the sync
+    endpoint body via run_in_threadpool, which may pick different worker
+    threads for the same request. The connection is still only ever used
+    sequentially within that one request, never concurrently from two
+    threads at once, so disabling the same-thread check is safe here.
     """
     if not path.exists():
         raise FileNotFoundError(
             f"Curated database not found: {path}. "
             "Run `python -m kestrel.transform build` first."
         )
-    return _configure(sqlite3.connect(f"file:{path.as_posix()}?mode=ro", uri=True))
+    return _configure(
+        sqlite3.connect(
+            f"file:{path.as_posix()}?mode=ro", uri=True, check_same_thread=False
+        )
+    )
