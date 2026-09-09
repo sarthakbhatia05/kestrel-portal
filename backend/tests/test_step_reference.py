@@ -84,3 +84,21 @@ def test_warehouses_are_loaded_into_dim_warehouse(curated):
     assert row["warehouse_code"] == "WH2"
     assert row["warehouse_name"] == "South Hub"
     assert row["region_id"] == 2
+
+
+def test_product_is_chilled_flag_is_loaded(curated):
+    assert curated.execute(
+        "SELECT is_chilled FROM dim_product WHERE product_id = 100"
+    ).fetchone()["is_chilled"] == 0
+    assert curated.execute(
+        "SELECT is_chilled FROM dim_product WHERE product_id = 200"
+    ).fetchone()["is_chilled"] == 1
+
+
+def test_routes_are_loaded_into_dim_route(curated):
+    row = curated.execute(
+        "SELECT route_code, route_name, warehouse_id FROM dim_route WHERE route_id = 11"
+    ).fetchone()
+    assert row["route_code"] == "RT011"
+    assert row["route_name"] == "West Loop B"
+    assert row["warehouse_id"] == 1

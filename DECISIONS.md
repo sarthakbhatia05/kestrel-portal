@@ -2,15 +2,17 @@
 
 ## What is built
 
-A curated data layer and two metrics, end to end, on the real database.
+A curated data layer and all five PRD metrics, end to end, on the real
+database.
 
 `python -m kestrel.transform build` reads `kestrel_ops.db` read-only and
-materialises a separate `kestrel_curated.db` in under a minute: 5 regions,
-724 outlets, 511,516 order lines, 76,889 deliveries, and 41,477
-quality-ledger rows. Every row the build excludes or repairs is written to
-that ledger with the rule that did it. The current counts are X4 41,401
-(cancelled and open orders), X1 42 (soft-deleted outlets), N5 27 (city names
-mapped), X5 4 (duplicate outlets), X2 3 (test outlets).
+materialises a separate `kestrel_curated.db` in well under a minute: 5
+regions, 724 outlets, 511,516 order lines, 76,889 deliveries, 14,000
+returns, 131,040 inventory snapshots, and 42,377 quality-ledger rows. Every
+row the build excludes or repairs is written to that ledger with the rule
+that did it. The current counts are X4 41,401 (cancelled and open orders),
+X1 42 (soft-deleted outlets), N5 27 (city names mapped), X5 4 (duplicate
+outlets), X2 3 (test outlets), N4 900 (return-quantity sign normalised).
 
 Fill rate: one implementation, called by the API, returned with the basis it
 was derived from — period, scope, unit, exclusion rules, and the number of
@@ -25,15 +27,34 @@ parameter, not a build-time constant, so the same curated data can answer
 "on time within 30 minutes" and "within 15" without a rebuild — and the
 basis line always states which tolerance produced the figure on screen.
 
-63 backend tests, all passing, Ruff clean.
+Returns and credit note leakage: value credited back, as a share of
+dispatch value, with only `APPROVED` credit notes counted as real leakage —
+`PENDING` and `REJECTED` value is still surfaced in the basis rather than
+silently dropped. A cold-chain-attributable sub-rate isolates returns coded
+as near-expiry or cold-chain breach (PRD C3.5).
+
+Near-expiry stock: available cases (on-hand less allocated, damaged and
+blocked — recomputed, not copied from the source column, which does not
+exclude damaged/blocked) within a configurable day threshold of expiry, as
+at the latest weekly snapshot, never as at today.
+
+Temperature excursions: chilled deliveries whose reefer breached its
+temperature band in transit, over all chilled deliveries, reported by month
+and by route/warehouse for concentration (PRD C3.1/C3.2).
+
+132 backend tests, all passing, Ruff clean.
 
 ## What is deliberately not built
 
-Cold-chain excursions, near-expiry and returns; the ask-anything interface;
-the quality-ledger screen; the region selector. All are designed (spec
-sections 6–9) and the structure for them exists. I chose depth over breadth:
-metrics that are genuinely defensible demonstrate more than five that are
-not.
+The ask-anything interface; the quality-ledger screen; the region selector.
+All are designed (spec sections 6–9) and the structure for them exists —
+`useScope` already carries `regionId`, and the quality ledger is already a
+populated table. Ask-anything is deliberately last: with only one or two
+metrics to route to, an intent resolver has nothing to choose between, and
+the guarantee that matters (the LLM resolves intent into a validated
+request, never sees a row, never emits a number) is unconvincing until there
+are enough metrics to make routing a real problem. With all five now built,
+that precondition is met.
 
 ## What I assumed
 
@@ -89,13 +110,40 @@ format both appear in the real data. A timestamp matching neither is logged
 as N3 and counted as unmeasured (PRD 5.3) rather than dropped — currently 0
 rows, the same zero-fire pattern as N1.
 
+**Only `APPROVED` credit notes count as returns leakage.** `PENDING` and
+`REJECTED` notes never resulted in an actual credit, so including them would
+overstate money given back that was never (or not yet) handed over. Both are
+still reported in the basis by count and value, the same principle as OTIF's
+`unmeasured_count`.
+
+**Return-quantity sign is normalised, original sign kept for audit.** 900 of
+14,000 rows arrive negative from one upstream feed (KP-2402); the credit
+note value itself is never negative, only the quantity needed correcting.
+
+**Near-expiry's `available_cases` is recomputed, not copied.** The source
+column is `on_hand_cases - allocated_cases` only; PRD 5.5 requires damaged
+and blocked stock excluded too, so the curated column is
+`on_hand - allocated - damaged - blocked`, with damaged/blocked still
+surfaced separately in the basis rather than folded invisibly into the rate.
+
+**A chilled delivery is derived, not read off a source column.** PRD 5.4
+defines it as "any line on the order is a chilled or frozen product," so
+`is_chilled` on `fact_delivery` is computed from `fact_order_line` joined to
+the product master's `is_chilled` flag — the same join pattern already used
+for OTIF's eaches sums — rather than trusting a delivery-level flag that
+does not exist in the source.
+
+**Excursion duration and severity are not inferred.** The source captures
+only a breach flag and a peak temperature per delivery; PRD 5.4 is explicit
+that a fuller severity profile must not be invented from those two numbers,
+so none is reported.
+
 ## What two more weeks would add
 
-The remaining three metrics against the same contract; the ask-anything path
-(the LLM resolves intent into a validated request and never sees a row or emits
-a number, so it cannot invent a figure); the quality ledger as a screen, since
-it is already a table; and the region selector, which the URL scope and the
-endpoint both already carry.
+The ask-anything path (the LLM resolves intent into a validated request and
+never sees a row or emits a number, so it cannot invent a figure); the
+quality ledger as a screen, since it is already a table; and the region
+selector, which the URL scope and the endpoint both already carry.
 
 ## What breaks first
 

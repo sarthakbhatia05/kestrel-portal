@@ -1,4 +1,5 @@
-"""Deliveries, evaluated for on-time performance. PRD 5.3.
+"""Deliveries, evaluated for on-time performance and cold-chain excursions.
+PRD 5.3, 5.4.
 
 N3: actual_arrival is supplied in two different timestamp formats (a
 "two-vendor" split, per the Slice 1 design doc's step table). A value
@@ -9,6 +10,14 @@ The source `delay_minutes` column is deliberately not read. Verified against
 the real data, it disagrees with actual_arrival - planned_arrival on the
 large majority of rows, with no discernible pattern. PRD 5.3 defines on-time
 from the two timestamps directly, so this step computes delay itself.
+
+`temperature_excursion_flag` and `max_temp_celsius` are carried straight
+from the source `deliveries` row -- PRD 5.4 notes only a breach flag and a
+peak temperature are captured, and duration/severity must not be inferred.
+`is_chilled` is derived here, not copied: "a delivery is chilled if any line
+on it is a chilled or frozen product" (PRD 5.4), so it is computed from
+`fact_order_line` joined to `dim_product.is_chilled`, the same join pattern
+this step already uses for the eaches sums.
 """
 
 import sqlite3
@@ -26,7 +35,8 @@ _PLANNED_ARRIVAL_FORMAT = "%Y-%m-%d %H:%M:%S"
 
 SELECT_DELIVERIES = """
 SELECT d.delivery_id, d.order_id, d.planned_arrival, d.actual_arrival,
-       d.route_id, d.warehouse_id, o.outlet_id, o.region_id, o.source_system
+       d.route_id, d.warehouse_id, d.temperature_excursion_flag, d.max_temp_celsius,
+       o.outlet_id, o.region_id, o.source_system
 FROM deliveries d
 JOIN orders o ON o.order_id = d.order_id
 ORDER BY d.delivery_id
@@ -60,6 +70,17 @@ def run(src: sqlite3.Connection, dst: sqlite3.Connection, ledger: QualityLedger)
             """
         )
     }
+    chilled_orders = {
+        row["order_id"]
+        for row in dst.execute(
+            """
+            SELECT DISTINCT fol.order_id
+            FROM fact_order_line fol
+            JOIN dim_product p ON p.product_id = fol.product_id
+            WHERE p.is_chilled = 1
+            """
+        )
+    }
 
     records = []
     for row in src.execute(SELECT_DELIVERIES):
@@ -78,12 +99,14 @@ def run(src: sqlite3.Connection, dst: sqlite3.Connection, ledger: QualityLedger)
 
         ordered_eaches, delivered_eaches = eaches_by_order.get(row["order_id"], (0.0, 0.0))
         rules = outlet_exclusions.get(row["outlet_id"], "")
+        is_chilled = 1 if row["order_id"] in chilled_orders else 0
 
         records.append(
             (
                 row["delivery_id"], row["order_id"], row["planned_arrival"], delay_minutes,
                 row["outlet_id"], row["region_id"], row["warehouse_id"], row["route_id"],
                 ordered_eaches, delivered_eaches,
+                is_chilled, row["temperature_excursion_flag"], row["max_temp_celsius"],
                 1 if rules else 0, rules,
             )
         )
@@ -93,8 +116,10 @@ def run(src: sqlite3.Connection, dst: sqlite3.Connection, ledger: QualityLedger)
         INSERT INTO fact_delivery (
             delivery_id, order_id, planned_arrival, delay_minutes,
             outlet_id, region_id, warehouse_id, route_id,
-            ordered_qty_eaches, delivered_qty_eaches, is_excluded, exclusion_rules
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ordered_qty_eaches, delivered_qty_eaches,
+            is_chilled, temperature_excursion_flag, max_temp_celsius,
+            is_excluded, exclusion_rules
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         records,
     )

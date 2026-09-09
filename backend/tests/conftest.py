@@ -13,11 +13,14 @@ CREATE TABLE outlets (
 );
 CREATE TABLE products (
     product_id INTEGER, sku_code TEXT, case_pack INTEGER, category TEXT,
-    list_price_inr REAL
+    list_price_inr REAL, is_chilled INTEGER
 );
 CREATE TABLE warehouses (
     warehouse_id INTEGER, warehouse_code TEXT, warehouse_name TEXT,
     region_id INTEGER, status TEXT
+);
+CREATE TABLE routes (
+    route_id INTEGER, route_code TEXT, route_name TEXT, warehouse_id INTEGER
 );
 CREATE TABLE inventory_snapshots (
     snapshot_id INTEGER, snapshot_date TEXT, warehouse_id INTEGER,
@@ -39,7 +42,8 @@ CREATE TABLE order_lines (
 CREATE TABLE deliveries (
     delivery_id INTEGER, order_id INTEGER, planned_arrival TEXT,
     actual_arrival TEXT, delay_minutes INTEGER, route_id INTEGER,
-    warehouse_id INTEGER
+    warehouse_id INTEGER, temperature_excursion_flag INTEGER,
+    max_temp_celsius REAL
 );
 CREATE TABLE returns_credit_notes (
     return_id INTEGER, credit_note_number TEXT, order_id INTEGER,
@@ -80,10 +84,11 @@ def source_db(tmp_path):
         ],
     )
     conn.executemany(
-        "INSERT INTO products VALUES (?, ?, ?, ?, ?)",
+        "INSERT INTO products VALUES (?, ?, ?, ?, ?, ?)",
         [
-            (100, "SKU100", 12, "Snacks", 100),
-            (200, "SKU200", 6, "Beverages", 20),
+            (100, "SKU100", 12, "Snacks", 100, 0),
+            # Chilled: any delivery carrying this product is a chilled delivery.
+            (200, "SKU200", 6, "Beverages", 20, 1),
         ],
     )
     conn.executemany(
@@ -91,6 +96,13 @@ def source_db(tmp_path):
         [
             (1, "WH1", "West Hub", 1, "ACTIVE"),
             (2, "WH2", "South Hub", 2, "ACTIVE"),
+        ],
+    )
+    conn.executemany(
+        "INSERT INTO routes VALUES (?, ?, ?, ?)",
+        [
+            (10, "RT010", "West Loop A", 1),
+            (11, "RT011", "West Loop B", 1),
         ],
     )
     conn.executemany(
@@ -117,29 +129,34 @@ def source_db(tmp_path):
             (4, 902, 100, 100, "CASE", 12, 0, 100, 0, None),
             # deleted outlet. dispatched = 5*100 = 500
             (5, 903, 100, 5, "CASE", 12, 5, 100, 0, None),
-            # out of period. dispatched = 5*100 = 500
-            (6, 904, 100, 5, "CASE", 12, 5, 100, 0, None),
+            # out of period, chilled (product 200): dispatched = 5*100 = 500
+            (6, 904, 200, 5, "CASE", 12, 5, 100, 0, None),
             # implausible case pack: falls back to the product master's 12
             # dispatched = 1*100 = 100
             (7, 900, 100, 1, "CASE", 0, 1, 100, 0, None),
         ],
     )
     conn.executemany(
-        "INSERT INTO deliveries VALUES (?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO deliveries VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
         [
             # order 900 (outlet 1): 30 min late, exactly on the default
             # tolerance boundary. Source delay_minutes says 0 -- wrong on
             # purpose, to prove the transform recomputes rather than trusts it.
-            (1, 900, "2026-04-15 10:00:00", "2026-04-15 10:30:00", 0, 10, 1),
+            # Chilled (product 200 on this order) and breached its band.
+            (1, 900, "2026-04-15 10:00:00", "2026-04-15 10:30:00", 0, 10, 1, 1, 9.5),
             # order 901 (outlet 2): 65 min late, in the alternate vendor
-            # timestamp format (12-hour, DD-Mon-YYYY).
-            (2, 901, "2026-04-16 09:00:00", "16-Apr-2026 10:05 AM", 5, 10, 1),
+            # timestamp format (12-hour, DD-Mon-YYYY). Chilled, no breach.
+            # Route 11: gives the excursion metric a second route bucket
+            # distinct from orders 900/904's route 10.
+            (2, 901, "2026-04-16 09:00:00", "16-Apr-2026 10:05 AM", 5, 11, 1, 0, 3.0),
             # order 903 (outlet 4, soft-deleted / X1): on time. Only visible
-            # with include_excluded=True.
-            (3, 903, "2026-04-17 09:00:00", "2026-04-17 09:00:00", 999, 11, 1),
+            # with include_excluded=True. Not chilled (product 100 only).
+            (3, 903, "2026-04-17 09:00:00", "2026-04-17 09:00:00", 999, 11, 1, 0, None),
             # order 904 (outlet 1): unparseable actual_arrival -> N3, and
-            # counted as unmeasured rather than dropped.
-            (4, 904, "2026-05-01 12:00:00", "not-a-real-timestamp", None, 10, 1),
+            # counted as unmeasured rather than dropped. Chilled (product 200,
+            # after the line-6 edit above) and breached, in May -- a second
+            # month bucket distinct from the other chilled deliveries' April.
+            (4, 904, "2026-05-01 12:00:00", "not-a-real-timestamp", None, 10, 1, 1, 8.0),
         ],
     )
     conn.executemany(

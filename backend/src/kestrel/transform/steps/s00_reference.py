@@ -5,12 +5,14 @@ migration) and X5 (duplicate outlets). X3 (closed outlets) is deliberately
 not applied here: it is period-scoped, so it belongs at query time.
 
 dim_product carries only what a metric needs -- category for returns,
-case_pack and list_price_inr for near-expiry -- it is not the full product
-master and gains columns only when a metric needs them.
+case_pack and list_price_inr for near-expiry, is_chilled for excursions --
+it is not the full product master and gains columns only when a metric
+needs them.
 
-dim_warehouse is similarly minimal. Every warehouse in the source is ACTIVE,
-so no exclusion rule is applied here: PRD 6.3's exclusion rules (X1/X2/X3/X5)
-are all scoped to outlets, none to warehouses.
+dim_warehouse and dim_route are similarly minimal. Every warehouse and route
+in the source is ACTIVE, so no exclusion rule is applied here: PRD 6.3's
+exclusion rules (X1/X2/X3/X5) are all scoped to outlets, none to warehouses
+or routes.
 """
 
 import sqlite3
@@ -121,11 +123,14 @@ def run(src: sqlite3.Connection, dst: sqlite3.Connection, ledger: QualityLedger)
 
     dst.executemany(
         """
-        INSERT INTO dim_product (product_id, sku_code, category, case_pack, list_price_inr)
-        VALUES (?, ?, ?, ?, ?)
+        INSERT INTO dim_product (
+            product_id, sku_code, category, case_pack, list_price_inr, is_chilled
+        )
+        VALUES (?, ?, ?, ?, ?, ?)
         """,
         src.execute(
-            "SELECT product_id, sku_code, category, case_pack, list_price_inr FROM products"
+            "SELECT product_id, sku_code, category, case_pack, list_price_inr, is_chilled "
+            "FROM products"
         ),
     )
 
@@ -137,4 +142,12 @@ def run(src: sqlite3.Connection, dst: sqlite3.Connection, ledger: QualityLedger)
         src.execute(
             "SELECT warehouse_id, warehouse_code, warehouse_name, region_id FROM warehouses"
         ),
+    )
+
+    dst.executemany(
+        """
+        INSERT INTO dim_route (route_id, route_code, route_name, warehouse_id)
+        VALUES (?, ?, ?, ?)
+        """,
+        src.execute("SELECT route_id, route_code, route_name, warehouse_id FROM routes"),
     )

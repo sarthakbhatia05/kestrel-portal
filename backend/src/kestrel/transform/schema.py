@@ -57,7 +57,8 @@ CREATE TABLE dim_product (
     sku_code         TEXT NOT NULL,
     category         TEXT,
     case_pack        INTEGER,
-    list_price_inr   REAL
+    list_price_inr   REAL,
+    is_chilled       INTEGER
 );
 
 CREATE TABLE dim_warehouse (
@@ -65,6 +66,13 @@ CREATE TABLE dim_warehouse (
     warehouse_code   TEXT NOT NULL,
     warehouse_name   TEXT NOT NULL,
     region_id        INTEGER
+);
+
+CREATE TABLE dim_route (
+    route_id         INTEGER PRIMARY KEY,
+    route_code       TEXT NOT NULL,
+    route_name       TEXT NOT NULL,
+    warehouse_id     INTEGER
 );
 
 CREATE TABLE fact_order_line (
@@ -102,12 +110,16 @@ CREATE TABLE fact_delivery (
     route_id              INTEGER,
     ordered_qty_eaches    REAL NOT NULL,
     delivered_qty_eaches  REAL NOT NULL,
+    is_chilled            INTEGER NOT NULL DEFAULT 0,
+    temperature_excursion_flag INTEGER NOT NULL DEFAULT 0,
+    max_temp_celsius      REAL,
     is_excluded           INTEGER NOT NULL DEFAULT 0,
     exclusion_rules       TEXT NOT NULL DEFAULT ''
 );
 CREATE INDEX ix_fd_planned ON fact_delivery (planned_arrival);
 CREATE INDEX ix_fd_outlet ON fact_delivery (outlet_id);
 CREATE INDEX ix_fd_region ON fact_delivery (region_id);
+CREATE INDEX ix_fd_chilled ON fact_delivery (is_chilled);
 
 CREATE TABLE fact_return (
     return_id             INTEGER PRIMARY KEY,

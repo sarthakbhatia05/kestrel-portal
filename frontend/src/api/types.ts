@@ -116,3 +116,32 @@ export interface NearExpiryResult {
   rows: NearExpiryRow[];
   basis: NearExpiryBasis;
 }
+
+export type ExcursionsGrain = "month" | "route" | "warehouse";
+
+export interface ExcursionsRow {
+  key: string;
+  label: string;
+  chilled_count: number;
+  excursion_count: number;
+  excursion_rate: number | null;
+}
+
+/** Mirrors ReturnsBasis's shape (a period, not a snapshot) but has no
+ * unit toggle and no pending/rejected concept -- just the exclusions and
+ * the chilled-delivery count the rate was computed over. */
+export interface ExcursionsBasis {
+  metric: string;
+  period_start: string;
+  period_end: string;
+  period_label: string;
+  scope: string;
+  exclusions_applied: string[];
+  source_row_count: number;
+}
+
+export interface ExcursionsResult {
+  headline: ExcursionsRow;
+  rows: ExcursionsRow[];
+  basis: ExcursionsBasis;
+}

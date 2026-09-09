@@ -190,3 +190,22 @@ def test_near_expiry_unknown_grain_is_rejected(client):
         "/api/service/near-expiry", params={"grain": "outlet"}
     )
     assert response.status_code == 422
+
+
+def test_excursions_returns_a_figure_with_its_basis(client):
+    response = client.get(
+        "/api/service/excursions", params={"grain": "month", "period": "FY27Q1"}
+    )
+    assert response.status_code == 200
+    body = response.json()
+    basis = body["basis"]
+    assert basis["metric"] == "excursions"
+    assert basis["scope"] == "National"
+    assert 0 < body["headline"]["excursion_rate"] < 1
+
+
+def test_excursions_unknown_grain_is_rejected(client):
+    response = client.get(
+        "/api/service/excursions", params={"grain": "outlet", "period": "FY27Q1"}
+    )
+    assert response.status_code == 422

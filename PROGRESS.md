@@ -13,17 +13,17 @@ Update it at the end of each slice, not continuously.
 
 | | |
 |---|---|
-| Slices complete | 4 (fill rate, OTIF, returns, near-expiry) — excursions next |
-| Backend tests | 115 passing, Ruff clean |
+| Slices complete | 5 (fill rate, OTIF, returns, near-expiry, excursions) — ask-anything next |
+| Backend tests | 132 passing, Ruff clean |
 | Frontend | tsc and oxlint clean; no test suite yet (see Known gaps) |
-| Curated build | 61.9s — 511,516 order lines, 76,889 deliveries, 14,000 returns, 131,040 inventory snapshots, 42,377 ledger rows |
+| Curated build | 14.4s (warm) — 511,516 order lines, 76,889 deliveries, 14,000 returns, 131,040 inventory snapshots, 42,377 ledger rows |
 | Fill rate query | 0.10s over 68,329 lines (NF3 allows 2s) |
 | Returns query | 0.6s over 2,099 credit notes (NF3 allows 2s) |
 | Near-expiry query | 0.01s over 1,680 batches (NF3 allows 2s) |
 | Cold start | Verified from a clean `git clone`, README only |
 
-**Metrics live:** fill rate (PRD §5.2), OTIF (PRD §5.3), returns (PRD §5.6), near-expiry (PRD §5.5).
-**Metrics not started:** excursions §5.4.
+**Metrics live:** fill rate (PRD §5.2), OTIF (PRD §5.3), returns (PRD §5.6), near-expiry (PRD §5.5), excursions (PRD §5.4).
+**Metrics not started:** none — ask-anything (C4) is next, routing across all five.
 
 **Original "Slice 3" (PROGRESS.md, 2026-09-09) bundled returns and
 near-expiry.** Split into two on request: they don't share a fact table or
@@ -231,6 +231,62 @@ What now runs end to end:
   window against, so N6's as-at-order-date rule doesn't apply here — a
   scope decision, not a gap.
 
+## Slice 5 — excursions (done, 2026-09-09)
+
+Implemented directly (no design doc), following the returns/near-expiry
+pattern: extend the existing `s30_deliveries` step and `s00_reference` →
+metric → router → landing card, TDD throughout.
+
+What now runs end to end:
+
+- `dim_product` gains `is_chilled` (own product-master column, unlike
+  near-expiry's `case_pack`/`list_price_inr` which are also product-master
+  columns — same "gains columns only when a metric needs them" convention).
+  New `dim_route` dimension (route_code, route_name, warehouse_id), needed
+  for PRD C3.2's route breakdown the way `dim_warehouse` already serves
+  OTIF's warehouse grain.
+- `fact_delivery` gains three columns from `s30_deliveries`:
+  `temperature_excursion_flag` and `max_temp_celsius`, copied straight from
+  the source (PRD 5.4: only a breach flag and peak temperature are
+  captured, duration/severity must not be inferred), and `is_chilled`,
+  which is *derived*, not copied — "a delivery is chilled if any line on it
+  is a chilled or frozen product" (PRD 5.4), computed via the same
+  `fact_order_line` join pattern the step already uses for eaches sums.
+- One excursions implementation, reporting `excursion_rate` (chilled
+  deliveries with a breach over all chilled deliveries) by month (C3.1, the
+  headline breakdown) and by route/warehouse for concentration (C3.2) — a
+  third grain set, distinct from fill rate/OTIF's region/warehouse/
+  route/outlet and returns' category/reason/region.
+- Landing view: a fifth card, in the money-loss group (PRD's own C3 groups
+  excursions with returns and near-expiry as "cold chain and returns") —
+  headline rate, chilled/breached sub-counts, worst five routes (the
+  concentration view, C3.2), basis line. Month grain (C3.1) is reachable via
+  the API's `grain=month` but not surfaced on the card, the same way
+  returns/near-expiry expose `region`/`warehouse` grains only through the
+  API, not the landing table.
+
+### Found in the data (verified, not assumed)
+
+- **Route and warehouse names in the source are generic** (`route_name` is
+  literally `"Route <n>"` for all 140 routes). The metric's `COALESCE(...,
+  'Route ' || route_id)` fallback — written defensively, mirroring OTIF's
+  warehouse/route label fallback — never actually fires; the real column
+  already reads that way. Not a bug, just a flatter source than the
+  fixture's hand-written route names suggested.
+- **National excursion rate is ~2.9% of chilled deliveries** (257 of 8,826,
+  FY27 Q1) — plausible for reefer transit in Indian ambient conditions, not
+  a flag. Worst routes concentrate at 8-14%, a real signal for targeted
+  reefer maintenance rather than a fleet-wide problem.
+
+### Changed from the plan while building
+
+- **No new transform step file.** Unlike returns/near-expiry, which each
+  introduced a new source table and step (`s40_returns`, `s50_inventory`),
+  excursions reuses `deliveries` (already read by `s30_deliveries` for
+  OTIF) and needs only new columns on the existing `fact_delivery` output,
+  plus two new/extended reference dimensions. The metric's own file
+  (`excursions.py`) is the only new module in the compute path.
+
 ## UI redesign, search, and a concurrency fix (done, 2026-09-09)
 
 Not a slice — no new metric, done directly in chat (bounded path, no design
@@ -287,13 +343,12 @@ What changed:
 
 ## Next
 
-**Slice 5 — excursions (§5.4).** The remaining C3 requirement.
-
-**Slice 6 — ask-anything (C4).** Deliberately last. With one metric to route
-to, an intent resolver has nothing to choose between and the guarantee that
-matters — the LLM resolves intent into a validated request, never sees a row,
-never emits a number — is unconvincing. With five metrics it is the sharpest
-thing in the build.
+**Slice 6 — ask-anything (C4).** All five PRD metrics are now live, which is
+the precondition this slice was deliberately waiting on: with one metric to
+route to, an intent resolver has nothing to choose between and the guarantee
+that matters — the LLM resolves intent into a validated request, never sees a
+row, never emits a number — is unconvincing. With five metrics it is the
+sharpest thing in the build.
 
 **Small, fold into a slice rather than planning separately:** the quality-ledger
 screen (the table is already populated) and the region selector (`useScope`

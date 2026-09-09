@@ -1,4 +1,5 @@
 import { useScope } from "../../lib/scope";
+import { ExcursionsCard } from "../service/ExcursionsCard";
 import { FillRateCard } from "../service/FillRateCard";
 import { NearExpiryCard } from "../service/NearExpiryCard";
 import { OtifCard } from "../service/OtifCard";
@@ -40,6 +41,7 @@ export function LandingView() {
           <section className="group group--money" aria-label="Money loss">
             <ReturnsCard regionId={regionId} period={period} />
             <NearExpiryCard regionId={regionId} />
+            <ExcursionsCard regionId={regionId} period={period} />
           </section>
         </div>
       </main>

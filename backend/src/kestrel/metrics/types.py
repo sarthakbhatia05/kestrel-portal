@@ -208,3 +208,52 @@ class NearExpiryResult(BaseModel):
     headline: NearExpiryRow
     rows: list[NearExpiryRow]
     basis: NearExpiryBasis
+
+
+class ExcursionsGrain(StrEnum):
+    """PRD C3.1/C3.2: by month (the headline breakdown) and by route/
+    warehouse (concentration) -- a different set again, so its own enum."""
+
+    MONTH = "month"
+    ROUTE = "route"
+    WAREHOUSE = "warehouse"
+
+
+class ExcursionsRequest(BaseModel):
+    grain: ExcursionsGrain
+    period_start: date
+    period_end: date
+    period_label: str
+    region_id: int | None = None
+    include_excluded: bool = False
+    limit: int | None = Field(default=None, ge=1, le=500)
+    ascending: bool = False
+    q: str | None = Field(default=None, max_length=200)
+
+
+class ExcursionsRow(BaseModel):
+    key: str
+    label: str
+    chilled_count: int
+    excursion_count: int
+    # Expressed as a fraction (0-1), consistent with every other rate in the
+    # API -- PRD 5.4's own formula multiplies by 100 for human-readable
+    # "per hundred chilled deliveries" framing, which the frontend applies,
+    # not this layer.
+    excursion_rate: float | None
+
+
+class ExcursionsBasis(BaseModel):
+    metric: str
+    period_start: date
+    period_end: date
+    period_label: str
+    scope: str
+    exclusions_applied: list[str]
+    source_row_count: int
+
+
+class ExcursionsResult(BaseModel):
+    headline: ExcursionsRow
+    rows: list[ExcursionsRow]
+    basis: ExcursionsBasis

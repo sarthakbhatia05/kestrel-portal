@@ -70,3 +70,16 @@ def test_region_and_grain_fields_are_denormalised(curated):
     assert row["region_id"] == 1
     assert row["route_id"] == 10
     assert row["warehouse_id"] == 1
+
+
+def test_is_chilled_is_derived_from_any_line_on_the_order(curated):
+    """Order 900 (delivery 1) has a line against product 200, which is
+    chilled; order 903 (delivery 3) only has product 100, which is not."""
+    assert _delivery(curated, 1)["is_chilled"] == 1
+    assert _delivery(curated, 3)["is_chilled"] == 0
+
+
+def test_excursion_flag_and_peak_temperature_are_carried_from_source(curated):
+    row = _delivery(curated, 1)
+    assert row["temperature_excursion_flag"] == 1
+    assert row["max_temp_celsius"] == pytest.approx(9.5)

@@ -1,4 +1,6 @@
 import type {
+  ExcursionsGrain,
+  ExcursionsResult,
   Grain,
   MetricResult,
   NearExpiryGrain,
@@ -123,6 +125,28 @@ export function fetchNearExpiry(params: NearExpiryParams = {}): Promise<NearExpi
     ascending: params.ascending,
     limit: params.limit,
     threshold_days: params.thresholdDays,
+    q: params.q,
+  });
+}
+
+export interface ExcursionsParams {
+  grain?: ExcursionsGrain;
+  regionId?: number | null;
+  period?: string;
+  ascending?: boolean;
+  limit?: number;
+  includeExcluded?: boolean;
+  q?: string;
+}
+
+export function fetchExcursions(params: ExcursionsParams = {}): Promise<ExcursionsResult> {
+  return get<ExcursionsResult>("/api/service/excursions", {
+    grain: params.grain ?? "route",
+    region_id: params.regionId,
+    period: params.period ?? "latest",
+    ascending: params.ascending,
+    limit: params.limit,
+    include_excluded: params.includeExcluded,
     q: params.q,
   });
 }

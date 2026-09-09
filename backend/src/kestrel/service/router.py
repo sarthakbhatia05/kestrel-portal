@@ -8,8 +8,11 @@ from kestrel.config import get_settings
 from kestrel.dependencies import get_curated_db, resolve_period
 from kestrel.exceptions import AppError
 from kestrel.fiscal import Period
-from kestrel.metrics import fill_rate, near_expiry, otif, returns
+from kestrel.metrics import excursions, fill_rate, near_expiry, otif, returns
 from kestrel.metrics.types import (
+    ExcursionsGrain,
+    ExcursionsRequest,
+    ExcursionsResult,
     Grain,
     MetricRequest,
     MetricResult,
@@ -113,6 +116,34 @@ def get_returns(
     return returns.compute(
         conn,
         ReturnsRequest(
+            grain=grain,
+            period_start=period.start,
+            period_end=period.end,
+            period_label=period.label,
+            region_id=region_id,
+            include_excluded=include_excluded,
+            ascending=ascending,
+            limit=limit,
+            q=q,
+        ),
+    )
+
+
+@router.get("/excursions", response_model=ExcursionsResult)
+def get_excursions(
+    period: Annotated[Period, Depends(resolve_period)],
+    conn: Annotated[sqlite3.Connection, Depends(get_curated_db)],
+    grain: ExcursionsGrain = ExcursionsGrain.MONTH,
+    region_id: int | None = None,
+    include_excluded: bool = False,
+    ascending: bool = False,
+    limit: int | None = Query(default=None, ge=1, le=500),
+    q: str | None = Query(default=None, max_length=200),
+) -> ExcursionsResult:
+    """Temperature excursion rate for a period. PRD 5.4."""
+    return excursions.compute(
+        conn,
+        ExcursionsRequest(
             grain=grain,
             period_start=period.start,
             period_end=period.end,
