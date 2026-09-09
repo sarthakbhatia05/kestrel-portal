@@ -23,6 +23,11 @@ CREATE TABLE order_lines (
     ordered_qty REAL, qty_uom TEXT, case_pack_at_order INTEGER,
     delivered_qty REAL, short_reason_code TEXT
 );
+CREATE TABLE deliveries (
+    delivery_id INTEGER, order_id INTEGER, planned_arrival TEXT,
+    actual_arrival TEXT, delay_minutes INTEGER, route_id INTEGER,
+    warehouse_id INTEGER
+);
 """
 
 
@@ -85,6 +90,24 @@ def source_db(tmp_path):
             (6, 904, 100, 5, "CASE", 12, 5, None),
             # implausible case pack: falls back to the product master's 12
             (7, 900, 100, 1, "CASE", 0, 1, None),
+        ],
+    )
+    conn.executemany(
+        "INSERT INTO deliveries VALUES (?, ?, ?, ?, ?, ?, ?)",
+        [
+            # order 900 (outlet 1): 30 min late, exactly on the default
+            # tolerance boundary. Source delay_minutes says 0 -- wrong on
+            # purpose, to prove the transform recomputes rather than trusts it.
+            (1, 900, "2026-04-15 10:00:00", "2026-04-15 10:30:00", 0, 10, 1),
+            # order 901 (outlet 2): 65 min late, in the alternate vendor
+            # timestamp format (12-hour, DD-Mon-YYYY).
+            (2, 901, "2026-04-16 09:00:00", "16-Apr-2026 10:05 AM", 5, 10, 1),
+            # order 903 (outlet 4, soft-deleted / X1): on time. Only visible
+            # with include_excluded=True.
+            (3, 903, "2026-04-17 09:00:00", "2026-04-17 09:00:00", 999, 11, 1),
+            # order 904 (outlet 1): unparseable actual_arrival -> N3, and
+            # counted as unmeasured rather than dropped.
+            (4, 904, "2026-05-01 12:00:00", "not-a-real-timestamp", None, 10, 1),
         ],
     )
     conn.commit()
