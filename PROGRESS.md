@@ -13,7 +13,7 @@ Update it at the end of each slice, not continuously.
 
 | | |
 |---|---|
-| Slices complete | 8 (fill rate, OTIF, returns, near-expiry, excursions, ask-anything, scope + investigation, data quality) |
+| Slices complete | 8 (fill rate, OTIF, returns, near-expiry, excursions, ask-anything, scope + investigation, data quality), plus a submission readiness pass |
 | Backend tests | 293 passing, Ruff clean |
 | Quality view query | 0.12s national, 0.19s one region (NF3 allows 2s) |
 | Frontend | tsc and oxlint clean; no test suite yet (see Known gaps) |
@@ -21,7 +21,7 @@ Update it at the end of each slice, not continuously.
 | Fill rate query | 0.10s over 68,329 lines (NF3 allows 2s) |
 | Returns query | 0.6s over 2,099 credit notes (NF3 allows 2s) |
 | Near-expiry query | 0.01s over 1,680 batches (NF3 allows 2s) |
-| Cold start | Verified from a clean `git clone`, README only |
+| Cold start | Re-verified 2026-09-10 from a clean `git clone`, README only: build 24s, every read endpoint 200, frontend `npm ci` + build clean |
 
 **Metrics live:** fill rate (PRD §5.2), OTIF (PRD §5.3), returns (PRD §5.6), near-expiry (PRD §5.5), excursions (PRD §5.4).
 **Ask-anything (C4)** routes plain-English questions across all five, and
@@ -665,6 +665,39 @@ frontend 5183) against the real curated database: the table, X4's 41,401
 entries paged 1–50 → 51–100, region switched to North (19.5% excluded,
 matching the in-process count), and back to the control tower with region
 and period carried over. No console errors.
+
+## Submission readiness pass (done, 2026-09-10)
+
+Not a slice. A review of the repository against the brief's submission
+requirements, and the fixes it turned up.
+
+- **The default period would have gone empty on 1 October.** `latest` was
+  the last complete quarter before `date.today()`. The extract ends on
+  30 June 2026, so once the calendar reached FY27 Q2 the default would name
+  a quarter with no rows, and every card on the landing page would open
+  empty — for a reviewer reading the submission a few weeks from now.
+  `latest` is now `latest_reportable_quarter`: the last complete quarter,
+  capped at the quarter the last order date falls in. The dashboard and
+  ask-anything both pass the curated connection into `parse_period`, so they
+  resolve it identically. Seven tests, written first, with `_today` pinned
+  to January 2027. It was only correct before because of the day it was
+  checked on, which is also why nothing caught it.
+- **DECISIONS.md cut from 1,898 words to 625.** The brief asks for one page.
+  It had also gone stale: it still listed ask-anything, the quality view
+  and the region selector as not built, gave 132 tests, proposed the
+  quality view as two-weeks work, and explained OTIF's 0% twice. It now
+  names the two asks from the brief that are deliberately absent — freight
+  cost per case and competitor price position — with the reasons already
+  recorded in PRD §4, which it previously did not mention at all.
+- **README** leads the ask-anything section with the Gemini key
+  requirement and states what the default period is.
+- **Unused Vite template files removed** (template README, hero image,
+  logos).
+
+Re-verified from a clean `git clone` following the README only: build
+24s, all read endpoints 200 on FY27 Q1, ask capability reporting
+unavailable without a key, frontend `npm ci` and build clean. 293 backend
+tests, Ruff clean.
 
 ## Next
 
