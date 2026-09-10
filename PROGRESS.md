@@ -14,7 +14,7 @@ Update it at the end of each slice, not continuously.
 | | |
 |---|---|
 | Slices complete | 8 (fill rate, OTIF, returns, near-expiry, excursions, ask-anything, scope + investigation, data quality) |
-| Backend tests | 286 passing, Ruff clean |
+| Backend tests | 293 passing, Ruff clean |
 | Quality view query | 0.12s national, 0.19s one region (NF3 allows 2s) |
 | Frontend | tsc and oxlint clean; no test suite yet (see Known gaps) |
 | Curated build | 14.4s (warm) — 511,516 order lines, 76,889 deliveries, 14,000 returns, 131,040 inventory snapshots, 42,377 ledger rows |

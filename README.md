@@ -102,10 +102,17 @@ Region and period are selected in the top bar and held in the URL, so any view
 is shareable by pasting the address, and the same scope applies to every card
 and to the ask panel. The dropdown offers the fiscal quarters and calendar
 months that actually contain rows — it is built from the data, not a fixed
-list. Questions may additionally name a week (`2026-W24`) or an explicit range
+list. The default is the latest complete fiscal quarter that has data (FY27
+Q1 for the supplied extract), so the front page never opens on an empty
+quarter however old the extract is. Questions may additionally name a week (`2026-W24`) or an explicit range
 (`2026-04-01..2026-06-30`).
 
 ## Ask anything
+
+> **Needs a Gemini API key.** Set `KESTREL_GEMINI_API_KEY=<your key>` in
+> `.env` and restart the API. Without it the ask panel says it is
+> unavailable; every dashboard figure and the data quality view work
+> without it.
 
 Ask a plain-English question about any of the five metrics. Simple questions
 resolve to one measurement and answer immediately.
@@ -117,6 +124,3 @@ figure comes from the same metric functions the dashboard calls; the model
 picks which to run and explains what they show, but computes nothing itself,
 and any sentence quoting a figure it was not shown is discarded. The
 measurements taken are listed under each answer.
-
-This needs `KESTREL_GEMINI_API_KEY` in `.env`. Without it the panel says so
-and every dashboard figure works exactly as before.
