@@ -6,13 +6,17 @@ The dropdown offers quarters and months; weeks and explicit ranges exist
 for questions people type rather than scroll to.
 """
 
+import sqlite3
 from datetime import date
 
 import pytest
 
+from kestrel import dependencies
 from kestrel.dependencies import parse_period
 from kestrel.exceptions import AppError
 from kestrel.fiscal import PeriodKind
+from kestrel.transform.runner import build
+from kestrel.transform.steps import s00_reference, s20_orders
 
 
 def test_fiscal_quarter_still_parses():
@@ -23,6 +27,19 @@ def test_fiscal_quarter_still_parses():
 
 def test_latest_still_resolves_to_a_complete_quarter():
     assert parse_period("latest").kind is PeriodKind.QUARTER
+
+
+def test_latest_is_anchored_to_the_data_not_the_calendar(tmp_path, source_db, monkeypatch):
+    """The fixture's orders end in May 2026 (FY27 Q1). Read in January 2027,
+    the calendar's last complete quarter is FY27 Q3, which has no rows."""
+    path = tmp_path / "curated.db"
+    build(source_db, path, steps=[s00_reference, s20_orders])
+    conn = sqlite3.connect(path)
+    monkeypatch.setattr(dependencies, "_today", lambda: date(2027, 1, 15))
+    try:
+        assert parse_period("latest", conn).label == "FY27 Q1"
+    finally:
+        conn.close()
 
 
 def test_calendar_month_parses():

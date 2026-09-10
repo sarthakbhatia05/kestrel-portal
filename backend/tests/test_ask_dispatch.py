@@ -1,7 +1,9 @@
 import sqlite3
+from datetime import date
 
 import pytest
 
+from kestrel import dependencies
 from kestrel.ask import dispatch
 from kestrel.ask.types import AskGrain, AskIntent, AskMetric
 from kestrel.transform.runner import build
@@ -35,6 +37,16 @@ def test_fill_rate_intent_reaches_the_canonical_metric(curated):
     assert result.basis.metric == "fill_rate"
     assert result.basis.period_label == "FY27 Q1"
     assert 0 < result.headline < 1
+
+
+def test_latest_in_a_question_resolves_against_the_data(curated, monkeypatch):
+    """Ask-anything and the dashboard must agree on what 'latest' means."""
+    monkeypatch.setattr(dependencies, "_today", lambda: date(2027, 1, 15))
+    result = dispatch.run(
+        curated,
+        AskIntent(metric=AskMetric.FILL_RATE, grain=AskGrain.OUTLET, period="latest"),
+    )
+    assert result.basis.period_label == "FY27 Q1"
 
 
 def test_a_missing_grain_falls_back_to_the_metrics_default(curated):

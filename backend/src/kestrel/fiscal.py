@@ -76,6 +76,24 @@ def latest_complete_quarter(
     return quarter_period(fiscal_year, quarter - 1, start_month)
 
 
+def latest_reportable_quarter(
+    today: date, data_end: date | None, start_month: int = DEFAULT_START_MONTH
+) -> Period:
+    """The most recent quarter that has both finished and has data in it.
+
+    The calendar alone is not enough: the extract ends on 30 June 2026, so
+    from 1 October `latest_complete_quarter` names FY27 Q2, which holds no
+    rows, and every card on the landing page opens empty. Capping it at the
+    quarter the data ends in keeps the default on a real figure, and still
+    never offers a quarter that is in progress.
+    """
+    complete = latest_complete_quarter(today, start_month)
+    if data_end is None or data_end >= complete.start:
+        return complete
+    fiscal_year, quarter = fiscal_year_and_quarter(data_end, start_month)
+    return quarter_period(fiscal_year, quarter, start_month)
+
+
 def month_period(year: int, month: int) -> Period:
     """A calendar month. Months are calendar, not fiscal: nobody asks for
     "the first month of Q1", they ask for June."""

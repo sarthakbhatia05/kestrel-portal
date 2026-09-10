@@ -7,6 +7,7 @@ from kestrel.fiscal import (
     custom_period,
     fiscal_year_and_quarter,
     latest_complete_quarter,
+    latest_reportable_quarter,
     month_period,
     previous_period,
     quarter_period,
@@ -47,6 +48,37 @@ def test_latest_complete_quarter_wraps_back_across_the_fiscal_year():
     period = latest_complete_quarter(date(2026, 5, 10))
     assert period.label == "FY26 Q4"
     assert (period.start, period.end) == (date(2026, 1, 1), date(2026, 3, 31))
+
+
+# --- The default quarter -------------------------------------------------
+#
+# The extract ends on 30 June 2026. Read against the calendar alone, "latest"
+# moves to FY27 Q2 on 1 October and every card on the landing page goes
+# empty. The default must stop at the quarter the data ends in.
+
+
+def test_latest_reportable_quarter_is_the_complete_quarter_when_the_data_reaches_it():
+    period = latest_reportable_quarter(date(2026, 9, 10), date(2026, 6, 30))
+    assert period.label == "FY27 Q1"
+
+
+def test_latest_reportable_quarter_never_runs_past_the_data():
+    # November 2026: the calendar's last complete quarter is FY27 Q2, which
+    # holds no rows at all.
+    period = latest_reportable_quarter(date(2026, 11, 5), date(2026, 6, 30))
+    assert period.label == "FY27 Q1"
+    assert (period.start, period.end) == (date(2026, 4, 1), date(2026, 6, 30))
+
+
+def test_latest_reportable_quarter_still_excludes_the_quarter_in_progress():
+    # Data current to yesterday, mid-Q2: Q2 is not finished, so Q1 it is.
+    period = latest_reportable_quarter(date(2026, 8, 15), date(2026, 8, 14))
+    assert period.label == "FY27 Q1"
+
+
+def test_latest_reportable_quarter_falls_back_to_the_calendar_without_data():
+    period = latest_reportable_quarter(date(2026, 11, 5), None)
+    assert period.label == "FY27 Q2"
 
 
 # --- Sub-quarter periods -------------------------------------------------

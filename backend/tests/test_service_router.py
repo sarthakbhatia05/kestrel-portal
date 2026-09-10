@@ -1,8 +1,10 @@
 import sqlite3
+from datetime import date
 
 import pytest
 from fastapi.testclient import TestClient
 
+from kestrel import dependencies
 from kestrel.dependencies import get_curated_db
 from kestrel.main import create_app
 from kestrel.transform.runner import build
@@ -48,6 +50,17 @@ def test_fill_rate_returns_a_figure_with_its_basis(client):
     assert basis["scope"] == "National"
     assert basis["period_label"] == "FY27 Q1"
     assert basis["exclusions_applied"] == ["X1", "X2", "X3", "X4", "X5"]
+
+
+def test_the_default_period_stays_on_the_data_after_the_calendar_moves_on(
+    client, monkeypatch
+):
+    """Opened in January 2027 with no period chosen, the landing page must
+    still show the last quarter that has rows, not an empty FY27 Q3."""
+    monkeypatch.setattr(dependencies, "_today", lambda: date(2027, 1, 15))
+    body = client.get("/api/service/fill-rate", params={"grain": "outlet"}).json()
+    assert body["basis"]["period_label"] == "FY27 Q1"
+    assert 0 < body["headline"] < 1
 
 
 def test_unit_toggles_to_cases(client):

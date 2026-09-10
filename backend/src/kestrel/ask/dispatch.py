@@ -88,7 +88,7 @@ def run(conn: sqlite3.Connection, intent: AskIntent) -> MetricResults:
             ),
         )
 
-    period = parse_period(intent.period)
+    period = parse_period(intent.period, conn)
     common = {
         "period_start": period.start,
         "period_end": period.end,

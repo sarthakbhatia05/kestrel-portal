@@ -7,6 +7,7 @@ a reader who concludes the build is broken.
 """
 
 import sqlite3
+from datetime import date
 
 from pydantic import BaseModel
 
@@ -87,6 +88,18 @@ def available_periods(conn: sqlite3.Connection) -> list[PeriodOption]:
 
 def build(conn: sqlite3.Connection) -> ScopeOptions:
     return ScopeOptions(regions=list_regions(conn), periods=available_periods(conn))
+
+
+def last_order_date(conn: sqlite3.Connection) -> date | None:
+    """The last day with orders in it, or None when there are none.
+
+    A bare MAX, so SQLite reads it straight off ix_fol_date: this runs on
+    every request that asks for the default period.
+    """
+    row = conn.execute("SELECT MAX(order_date) FROM fact_order_line").fetchone()
+    if row is None or row[0] is None:
+        return None
+    return date.fromisoformat(row[0])
 
 
 def data_range(conn: sqlite3.Connection) -> tuple[str, str] | None:

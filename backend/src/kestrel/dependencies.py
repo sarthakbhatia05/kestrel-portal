@@ -2,8 +2,9 @@ import re
 import sqlite3
 from collections.abc import Iterator
 from datetime import date
+from typing import Annotated
 
-from fastapi import Query
+from fastapi import Depends, Query
 
 from kestrel.config import get_settings
 from kestrel.database import open_curated_readonly
@@ -11,11 +12,12 @@ from kestrel.exceptions import AppError
 from kestrel.fiscal import (
     Period,
     custom_period,
-    latest_complete_quarter,
+    latest_reportable_quarter,
     month_period,
     quarter_period,
     week_period,
 )
+from kestrel.reference.scope import last_order_date
 
 _QUARTER_PATTERN = re.compile(r"^FY(\d{2})Q([1-4])$", re.IGNORECASE)
 _MONTH_PATTERN = re.compile(r"^(\d{4})-(\d{2})$")
@@ -55,7 +57,12 @@ def _invalid(period: str) -> AppError:
     )
 
 
-def parse_period(period: str) -> Period:
+def _today() -> date:
+    # A seam for tests: "latest" depends on the date it is read on.
+    return date.today()
+
+
+def parse_period(period: str, conn: sqlite3.Connection | None = None) -> Period:
     """A period specification as a real date range.
 
     Periods are resolved here for every surface, including ask-anything:
@@ -65,10 +72,16 @@ def parse_period(period: str) -> Period:
     Quarters and months are what the dashboard's selector offers. Weeks and
     explicit ranges exist because they are typed rather than scrolled to --
     "last week" is a question people ask and a dropdown nobody wants.
+
+    `conn` anchors "latest" to where the data ends; without it, "latest"
+    falls back to the calendar alone.
     """
     settings = get_settings()
     if period == "latest":
-        return latest_complete_quarter(date.today(), settings.fiscal_year_start_month)
+        data_end = last_order_date(conn) if conn is not None else None
+        return latest_reportable_quarter(
+            _today(), data_end, settings.fiscal_year_start_month
+        )
 
     if match := _QUARTER_PATTERN.match(period):
         return quarter_period(
@@ -96,9 +109,15 @@ def parse_period(period: str) -> Period:
 
 
 def resolve_period(
+    # The same connection the endpoint receives: FastAPI caches a dependency
+    # within one request, so this opens nothing extra.
+    conn: Annotated[sqlite3.Connection, Depends(get_curated_db)],
     period: str = Query(
         default="latest",
-        description="'latest' for the most recent complete fiscal quarter, or FY27Q1.",
+        description=(
+            "'latest' for the most recent complete fiscal quarter that has "
+            "data, or FY27Q1."
+        ),
     ),
 ) -> Period:
-    return parse_period(period)
+    return parse_period(period, conn)
