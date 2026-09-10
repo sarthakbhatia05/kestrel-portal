@@ -351,3 +351,137 @@ tbody tr:first-child td:first-child {
     transition: none !important;
   }
 }
+
+/* Ask (C4). Sits above the cards: a question is an entry point to the
+   same figures, not a separate product. */
+.ask {
+  margin-bottom: 1.5rem;
+}
+.ask__scope {
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+.ask__log {
+  max-height: 22rem;
+  overflow-y: auto;
+  margin-bottom: 0.875rem;
+}
+.ask__empty p {
+  margin: 0 0 0.625rem;
+  color: var(--muted);
+}
+.ask__examples {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.ask__examples button {
+  border: 1px solid var(--line);
+  background: none;
+  border-radius: 999px;
+  padding: 0.3125rem 0.75rem;
+  font: inherit;
+  font-size: 0.8125rem;
+  color: var(--accent);
+  cursor: pointer;
+}
+.ask__examples button:hover {
+  background: var(--accent-tint);
+}
+.ask__turn + .ask__turn {
+  margin-top: 1.25rem;
+}
+.ask__question {
+  margin: 0 0 0.5rem;
+  font-weight: 600;
+}
+.ask__answer {
+  border-left: 3px solid var(--accent);
+  padding-left: 0.75rem;
+}
+/* A decline is a valid answer (C4.4), not an error -- muted, not alarming. */
+.ask__answer.is-declined {
+  border-left-color: var(--line);
+  color: var(--muted);
+}
+.ask__prose {
+  margin: 0 0 0.375rem;
+}
+/* The answer of record. Smaller than the prose it supports, but it is the
+   half that carries the figure, the period and the exclusions. */
+.ask__record {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--muted);
+}
+.ask__rows {
+  margin-top: 0.625rem;
+  width: 100%;
+}
+.ask__rows tbody tr:first-child {
+  background: none;
+}
+.ask__rows tbody tr:first-child td:first-child {
+  box-shadow: none;
+  padding-left: 0.25rem;
+}
+.ask__pending {
+  color: var(--muted);
+}
+.ask__error {
+  color: var(--loss);
+}
+.ask__form {
+  display: flex;
+  gap: 0.5rem;
+}
+.ask__form input {
+  flex: 1;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 0.5rem 0.625rem;
+  font: inherit;
+}
+.ask__form button {
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: #fff;
+  border-radius: 4px;
+  padding: 0.5rem 1rem;
+  font: inherit;
+  cursor: pointer;
+}
+.ask__form button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* Unavailable is a state, not an error: the dashboard below is intact. */
+.ask--unavailable {
+  border-left: 3px solid var(--line);
+}
+.ask__unavailable {
+  margin: 0 0 0.625rem;
+  color: var(--muted);
+}
+.ask__supported {
+  margin: 0;
+  padding-left: 1.125rem;
+  font-size: 0.8125rem;
+  color: var(--muted);
+}
+
+/* A figure that looks broken but isn't. Rendered next to the basis,
+   because it is the same kind of claim: what this number was derived
+   from, and why it reads the way it does. */
+.note {
+  margin: 0 0 0.75rem;
+  padding: 0.5rem 0.625rem;
+  background: var(--accent-tint);
+  border-radius: 4px;
+  font-size: 0.8125rem;
+  color: var(--muted);
+}

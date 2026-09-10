@@ -1,4 +1,7 @@
 import type {
+  AskAnswer,
+  AskCapability,
+  AskTurn,
   ExcursionsGrain,
   ExcursionsResult,
   Grain,
@@ -149,4 +152,32 @@ export function fetchExcursions(params: ExcursionsParams = {}): Promise<Excursio
     include_excluded: params.includeExcluded,
     q: params.q,
   });
+}
+
+export function fetchAskCapability(): Promise<AskCapability> {
+  return get<AskCapability>("/api/service/ask/capability", {});
+}
+
+export async function postAsk(body: {
+  question: string;
+  window: AskTurn[];
+  regionId: number | null;
+}): Promise<AskAnswer> {
+  const response = await fetch("/api/service/ask", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      question: body.question,
+      window: body.window,
+      region_id: body.regionId,
+    }),
+  });
+  if (!response.ok) {
+    const payload = await response.json().catch(() => null);
+    throw new ApiError(
+      payload?.error?.code ?? "UNKNOWN",
+      payload?.error?.message ?? `Request failed with ${response.status}`,
+    );
+  }
+  return response.json() as Promise<AskAnswer>;
 }

@@ -65,6 +65,18 @@ export function OtifCard({ regionId, period }: Props) {
         </div>
       </dl>
 
+      {data.headline.in_full_count === 0 && data.headline.due_count > 0 && (
+        /* A metric reading 0.0% everywhere reads as a broken build. It is
+           not: PRD 5.3 defines in-full as fill rate = 100% in eaches, and
+           no line in this dataset is ever delivered complete. Saying so
+           here is cheaper than every reader rediscovering it. */
+        <p className="note">
+          No delivery this period arrived in full — every order was short on
+          at least one line — so OTIF is 0% whatever the arrival times.
+          On-time is the axis that separates performance here.
+        </p>
+      )}
+
       <BasisLine basis={data.basis} rowNoun="deliveries" />
 
       <div className="table-head">

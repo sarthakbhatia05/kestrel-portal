@@ -13,8 +13,8 @@ Update it at the end of each slice, not continuously.
 
 | | |
 |---|---|
-| Slices complete | 5 (fill rate, OTIF, returns, near-expiry, excursions) — ask-anything next |
-| Backend tests | 132 passing, Ruff clean |
+| Slices complete | 6 (fill rate, OTIF, returns, near-expiry, excursions, ask-anything) |
+| Backend tests | 186 passing, Ruff clean |
 | Frontend | tsc and oxlint clean; no test suite yet (see Known gaps) |
 | Curated build | 14.4s (warm) — 511,516 order lines, 76,889 deliveries, 14,000 returns, 131,040 inventory snapshots, 42,377 ledger rows |
 | Fill rate query | 0.10s over 68,329 lines (NF3 allows 2s) |
@@ -23,7 +23,7 @@ Update it at the end of each slice, not continuously.
 | Cold start | Verified from a clean `git clone`, README only |
 
 **Metrics live:** fill rate (PRD §5.2), OTIF (PRD §5.3), returns (PRD §5.6), near-expiry (PRD §5.5), excursions (PRD §5.4).
-**Metrics not started:** none — ask-anything (C4) is next, routing across all five.
+**Ask-anything (C4)** routes plain-English questions across all five.
 
 **Original "Slice 3" (PROGRESS.md, 2026-09-09) bundled returns and
 near-expiry.** Split into two on request: they don't share a fact table or
@@ -287,6 +287,149 @@ What now runs end to end:
   plus two new/extended reference dimensions. The metric's own file
   (`excursions.py`) is the only new module in the compute path.
 
+## Slice 6 — ask-anything (done, 2026-09-09)
+
+Implemented directly (no design doc), TDD throughout, in the established
+order: types → pure modules → resolver against a fake model → dispatch →
+endpoint → frontend surface.
+
+**No vector database, no RAG.** Vector search answers "which document is
+relevant"; there is no unstructured corpus here, and retrieval would put
+rows in front of a model that must never see one. The problem is intent
+resolution, so that is what the model does: `question → AskIntent`, a typed
+Pydantic object, via Gemini structured output. Everything after that is the
+same code the dashboard runs.
+
+What now runs end to end:
+
+- `kestrel/ask/`, previously an empty placeholder package:
+  - `types.py` — `AskIntent` (flat, not a discriminated union: a flat
+    `response_schema` is what a model resolves reliably), `AskTurn`,
+    `AskRequest`, `AskAnswer`. `metric` is a closed enum whose values
+    include `unsupported`, so declining is expressible *inside* the schema
+    rather than being an error path (C4.4).
+  - `catalogue.py` — regions, warehouses, categories and return reasons read
+    from the curated DB into the prompt as a closed set. Outlets are the one
+    dimension too large to enumerate; they go through the existing `q`
+    substring filter.
+  - `resolver.py` — the one place a model reads a question. Anything that
+    fails — malformed object, metric outside the enum, invented `region_id`,
+    transport error — resolves to `unsupported`. There is no path from a
+    failed resolution to a figure.
+  - `dispatch.py` — `AskIntent` → the same `MetricRequest`/`ReturnsRequest`/
+    `NearExpiryRequest`/`ExcursionsRequest` objects the router builds, then
+    the same `compute` functions (C4.3). No SQL, no arithmetic of its own.
+  - `answer.py` — the deterministic answer of record, assembled in Python.
+    Every sentence states the figure, period (or snapshot), scope, unit and
+    exclusions (C4.1, C4.2).
+  - `narrator.py` + `guard.py` — the hybrid: optional model framing over the
+    computed answer, with every number in it checked against the numbers in
+    the result at the precision it rendered them. Prose that fails is
+    dropped whole, never repaired.
+  - `gemini.py` — the only module that imports the SDK, and it imports it
+    lazily. `get_client()` returns `None` when no key is configured.
+- `POST /api/service/ask` and `GET /api/service/ask/capability`. Declines
+  return **200 with `declined: true`**, not an error: declining is an answer
+  the product is designed to give.
+- Frontend `AskPanel` above the five cards, reusing `useScope` (C5.3). Prose
+  renders above the deterministic answer, never instead of it. When
+  capability reports unavailable it renders an explicit unavailable state
+  naming what it would answer (C4.6) — the first cut removed the panel
+  entirely, which reads as a broken build rather than a deliberate
+  degradation.
+- `config.anthropic_api_key` (unused since slice 1) → `gemini_api_key`, plus
+  `gemini_model` (default `gemini-2.5-flash`). `google-genai` added to
+  `requirements.txt`.
+
+### Decisions worth defending
+
+- **The model never sees a row, a figure or a query.** Its entire output is
+  one `AskIntent`, and its only other job is rephrasing an answer that has
+  already been computed. C4.3/C4.4/C4.6 hold by construction, not by prompt
+  discipline.
+- **Conversation window carries `{question, intent}`, never answers.** Ten
+  overlapping turns, held by the client; the server stays stateless. A
+  follow-up ("and Delhi?") needs the previous *request* to merge onto, not
+  the previous figures — and this way no computed number is ever in the
+  model's context at any depth.
+- **A grain the metric cannot serve is declined, not swapped.** "Returns by
+  outlet" is a different question from "returns by category"; answering the
+  second when asked the first is the C4.4 failure arriving by a side door.
+- **Periods are resolved by `fiscal.py`, never by the model.** The fiscal
+  year starts in April; model date arithmetic gets quarter boundaries wrong.
+  `resolve_period` was split into a plain `parse_period` so ask and the
+  router share one implementation.
+- **The guard is tested against our own answer text.** A parametrised test
+  runs `guard.check` over the deterministic answer for all five metrics: if
+  the answer of record ever quotes a number the result does not contain, it
+  fails the same check generated prose does.
+
+### Verified live against Gemini (2026-09-09)
+
+Four questions through the real API, `gemini-2.5-flash`:
+
+- *"Which five outlets had the worst fill rate last quarter?"* → resolved to
+  `fill_rate / outlet / latest / limit 5 / ascending true`. Correct on every
+  field, including the two nobody states explicitly (limit, direction).
+- *"How is OTIF in the West region?"* then *"and South?"* → the follow-up
+  carried metric and grain from the window and changed only `region_id`.
+  Delta resolution works on a real model, not just the fake.
+- *"Why did fill rate drop, and what will it be next quarter?"* → declined.
+  Both halves are outside the measured data (cause, forecast) and it did not
+  answer the answerable-looking half.
+- *"Where is near-expiry stock concentrated?"* → `near_expiry / warehouse`,
+  answered as at the 2026-06-29 snapshot rather than a period.
+
+Generated prose passed the numeric guard on every answered question.
+
+### Two bugs the live call found that the fake model could not
+
+- **The SDK client was collected mid-request.** `self._client().models
+  .generate_content(...)` keeps no reference to the client, whose `__del__`
+  closes its httpx transport — so the request in flight died with "Cannot
+  send a request, as the client has been closed". The client is now built
+  once and held. A fake model can never surface this: it has no transport.
+- **A transport failure was reported as a decline.** Every exception funnelled
+  to `unsupported`, so an outage told the user "I cannot answer that from the
+  measured data" — a false statement about the data, and exactly the kind of
+  confident wrongness C4.4 exists to prevent. Transport failures now raise
+  `LanguageUnavailable` → 503; only a model that answered unusably still
+  declines.
+
+### OTIF's 0.0% investigated (2026-09-10)
+
+Made visible by ask-anything: *"How is OTIF in the West region?"* returned
+0.0% with in-full 0.0%, which reads as a broken metric.
+
+It is not. PRD 5.3 defines in full as fill rate = 100% in eaches; `otif.py`
+implements exactly that (`delivered_qty_eaches >= ordered_qty_eaches`), and
+the *source* data has **zero** fully-delivered lines out of 511,516 — 0 in
+CASE rows (398,741, mean ratio 0.74) and 0 in EACH rows (112,775, mean 0.83).
+Checked at line level, order level and delivery level; no exceptions
+anywhere. The transform is not at fault and neither is the metric.
+
+Changed nothing in the computation. Added a note on the OTIF card explaining
+why the figure is 0% and that on-time is the discriminating axis, plus an
+entry in DECISIONS.md. Introducing an in-full tolerance would have been an
+assumption invented to improve a number, and would have buried a real data
+finding.
+
+I called this a bug before checking it. It was not one — the check took four
+queries, and the claim should have waited for them.
+
+### On UI copy
+
+The OTIF note first shipped citing "PRD 5.3" on the card. Spec section
+numbers are an internal artefact; nobody operating a control tower has the
+PRD open. Rewritten in operational language — the requirement traceability
+lives in code comments and in DECISIONS.md, which is where a reader who
+wants it will be looking.
+
+### Not done
+
+- `.env.example` still lists `KESTREL_ANTHROPIC_API_KEY` (the file is
+  outside what this session can write).
+
 ## UI redesign, search, and a concurrency fix (done, 2026-09-09)
 
 Not a slice — no new metric, done directly in chat (bounded path, no design
@@ -343,12 +486,8 @@ What changed:
 
 ## Next
 
-**Slice 6 — ask-anything (C4).** All five PRD metrics are now live, which is
-the precondition this slice was deliberately waiting on: with one metric to
-route to, an intent resolver has nothing to choose between and the guarantee
-that matters — the LLM resolves intent into a validated request, never sees a
-row, never emits a number — is unconvincing. With five metrics it is the
-sharpest thing in the build.
+**Configure `KESTREL_GEMINI_API_KEY` and verify ask end to end** — the one
+piece of slice 6 a fake model cannot cover.
 
 **Small, fold into a slice rather than planning separately:** the quality-ledger
 screen (the table is already populated) and the region selector (`useScope`
@@ -363,5 +502,8 @@ carries `regionId`, the endpoint accepts it).
 - No frontend tests yet. The API contract is typed by hand in `api/types.ts`
   rather than generated from the OpenAPI schema, so the two can drift.
 - Transform is a full rebuild. Fine at 511k lines; not at 50 million.
-- `coldchain/`, `quality/`, `ask/` and `reference/` are empty packages that
-  exist to make the intended structure visible.
+- `coldchain/`, `quality/` and `reference/` are empty packages that exist to
+  make the intended structure visible. `ask/` is now populated.
+- Ask-anything has no live-model test. The resolver's prompt quality — does
+  a real Gemini call map real questions onto the right intent — is unproven
+  until a key is configured.

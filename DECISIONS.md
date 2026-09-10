@@ -65,6 +65,21 @@ modern-trade penalties are assessed on units short, and cases is a toggle
 views of the same event cannot disagree. Today they read 85.6% and 85.9%: a
 real, explainable difference, from one derivation.
 
+**OTIF reads 0.0% because no delivery in this data is ever in full.** PRD
+5.3 defines in full as every line delivered complete — fill rate 100% in
+eaches. Not one of the 511,516 order lines meets that test: the average
+line is delivered at 0.74 (cases) and 0.83 (eaches) of what was ordered, and
+there is not a single exception in either unit. So OTIF is 0% everywhere,
+and on-time (~43%) is the only axis that discriminates.
+
+I did not introduce an in-full tolerance to make the number move. A
+tolerance would be an assumption invented to improve a figure, which is the
+failure this product exists to eliminate — and it would hide a real finding:
+either the source systems never record complete delivery, or the extract is
+wrong. That is a question for Operations, not something a dashboard should
+paper over. The OTIF card states the reason on its face so nobody reads 0.0%
+as a broken build.
+
 **Exclusions are flags, not deletions.** Excluded rows stay in the curated
 tables carrying the rules that excluded them, so `include_excluded=true`
 reverses any exclusion as a query, not a rebuild.

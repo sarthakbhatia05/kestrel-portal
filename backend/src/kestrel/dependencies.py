@@ -29,12 +29,13 @@ def get_curated_db() -> Iterator[sqlite3.Connection]:
         conn.close()
 
 
-def resolve_period(
-    period: str = Query(
-        default="latest",
-        description="'latest' for the most recent complete fiscal quarter, or FY27Q1.",
-    ),
-) -> Period:
+def parse_period(period: str) -> Period:
+    """'latest' or FY<yy>Q<n> as a real date range.
+
+    Periods are resolved here for every surface, including ask-anything:
+    the fiscal year starts in April, and anything that does its own quarter
+    arithmetic will eventually disagree with the dashboard.
+    """
     settings = get_settings()
     if period == "latest":
         return latest_complete_quarter(date.today(), settings.fiscal_year_start_month)
@@ -51,3 +52,12 @@ def resolve_period(
         int(match.group(2)),
         settings.fiscal_year_start_month,
     )
+
+
+def resolve_period(
+    period: str = Query(
+        default="latest",
+        description="'latest' for the most recent complete fiscal quarter, or FY27Q1.",
+    ),
+) -> Period:
+    return parse_period(period)

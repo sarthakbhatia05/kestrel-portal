@@ -145,3 +145,64 @@ export interface ExcursionsResult {
   rows: ExcursionsRow[];
   basis: ExcursionsBasis;
 }
+
+export type AskMetric =
+  | "fill_rate"
+  | "otif"
+  | "returns"
+  | "near_expiry"
+  | "excursions"
+  | "unsupported";
+
+export type AskGrain =
+  | "region"
+  | "warehouse"
+  | "route"
+  | "outlet"
+  | "category"
+  | "reason"
+  | "month";
+
+/** What a question resolved to. Carried back on the next turn so a
+ * follow-up ("and Delhi?") has something to build on -- never the answer,
+ * so no computed figure ever re-enters the model's context. */
+export interface AskIntent {
+  metric: AskMetric;
+  grain: AskGrain | null;
+  period: string;
+  region_id: number | null;
+  unit: Unit;
+  limit: number | null;
+  ascending: boolean;
+  q: string | null;
+  include_excluded: boolean;
+}
+
+export interface AskTurn {
+  question: string;
+  intent: AskIntent;
+}
+
+export type AskResult =
+  | MetricResult
+  | OtifResult
+  | ReturnsResult
+  | NearExpiryResult
+  | ExcursionsResult;
+
+export interface AskAnswer {
+  question: string;
+  intent: AskIntent | null;
+  /** Deterministic and always present: the answer of record. */
+  answer: string;
+  /** Optional model framing that passed the numeric guard. */
+  prose: string | null;
+  result: AskResult | null;
+  declined: boolean;
+  supported_metrics: string[] | null;
+}
+
+export interface AskCapability {
+  available: boolean;
+  supported_metrics: string[];
+}

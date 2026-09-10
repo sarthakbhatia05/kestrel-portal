@@ -32,7 +32,10 @@ class Settings(BaseSettings):
     # PRD 5.7. Financial year runs April to March.
     fiscal_year_start_month: int = 4
 
-    anthropic_api_key: str | None = None
+    # PRD C4.6: absent means the ask-anything surface reports itself
+    # unavailable. Every dashboard figure is unaffected.
+    gemini_api_key: str | None = None
+    gemini_model: str = "gemini-2.5-flash"
     cors_origins: list[str] = ["http://localhost:5173"]
 
     @field_validator("source_db_path", "curated_db_path")

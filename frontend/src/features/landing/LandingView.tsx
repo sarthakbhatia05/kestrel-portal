@@ -1,4 +1,5 @@
 import { useScope } from "../../lib/scope";
+import { AskPanel } from "../ask/AskPanel";
 import { ExcursionsCard } from "../service/ExcursionsCard";
 import { FillRateCard } from "../service/FillRateCard";
 import { NearExpiryCard } from "../service/NearExpiryCard";
@@ -26,6 +27,8 @@ export function LandingView() {
           <h1>Control tower</h1>
           <p>Where we are losing service, and where we are losing money.</p>
         </header>
+
+        <AskPanel regionId={regionId} />
 
         <div className="grid">
           <section className="group group--service" aria-label="Service loss">
