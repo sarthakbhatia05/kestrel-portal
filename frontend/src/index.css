@@ -485,3 +485,106 @@ tbody tr:first-child td:first-child {
   font-size: 0.8125rem;
   color: var(--muted);
 }
+
+/* Scope selectors */
+
+.scopebar {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+.scopebar__field {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+.scopebar__label {
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+.scopebar__field select {
+  font-family: inherit;
+  font-size: 0.8125rem;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 0.25rem 0.5rem;
+  cursor: pointer;
+}
+.scopebar__field select:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+/* The scope restated in prose beside the controls: the selects say what
+   you can change, this says what you are currently looking at. */
+.scopebar__reading {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 0.75rem;
+  color: var(--muted);
+  padding-left: 1rem;
+  border-left: 1px solid var(--line);
+}
+
+@media (max-width: 40rem) {
+  .scopebar__reading {
+    display: none;
+  }
+}
+
+/* Investigation trail */
+
+.ask__trail-wrap {
+  margin: 0.5rem 0 0.75rem;
+}
+.ask__trail-wrap > summary {
+  font-size: 0.75rem;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 0.125rem 0;
+}
+.ask__trail-wrap > summary:hover {
+  color: var(--ink);
+}
+.ask__trail {
+  list-style: none;
+  margin: 0.5rem 0 0;
+  padding: 0;
+  border-left: 2px solid var(--accent-tint);
+}
+.ask__trail > li {
+  position: relative;
+  padding: 0 0 0.75rem 0.875rem;
+}
+.ask__trail > li::before {
+  content: "";
+  position: absolute;
+  left: -5px;
+  top: 0.4rem;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+.ask__trail > li.is-failed::before {
+  background: var(--line);
+}
+.ask__step-reason {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--ink);
+}
+.ask__step-summary,
+.ask__step-error,
+.ask__step-delta {
+  margin: 0.125rem 0 0;
+  font-size: 0.75rem;
+  color: var(--muted);
+  line-height: 1.5;
+}
+.ask__step-error {
+  color: var(--loss);
+}
+.ask__step-delta {
+  color: var(--ink);
+}

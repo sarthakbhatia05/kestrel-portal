@@ -36,5 +36,8 @@ export function useScope() {
     period: params.get("period") ?? "latest",
     setUnit: (unit: Unit) => update("unit", unit),
     setRegionId: (id: number | null) => update("region", id === null ? null : String(id)),
+    // "latest" is the default, so it is dropped from the URL rather than
+    // written into it: a shared link carries only what was actually chosen.
+    setPeriod: (period: string) => update("period", period === "latest" ? null : period),
   };
 }

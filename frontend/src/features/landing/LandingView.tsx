@@ -1,4 +1,5 @@
 import { useScope } from "../../lib/scope";
+import { ScopeBar } from "./ScopeBar";
 import { AskPanel } from "../ask/AskPanel";
 import { ExcursionsCard } from "../service/ExcursionsCard";
 import { FillRateCard } from "../service/FillRateCard";
@@ -11,16 +12,18 @@ import { ReturnsCard } from "../service/ReturnsCard";
  * Worst performers are visible on entry, with no drill-down required.
  */
 export function LandingView() {
-  const { unit, regionId, period, setUnit } = useScope();
+  const { unit, regionId, period, setUnit, setRegionId, setPeriod } = useScope();
 
   return (
     <>
       <div className="topbar">
         <span className="topbar__mark">Kestrel</span>
-        <span className="topbar__scope">
-          {regionId === null ? "All regions" : `Region ${regionId}`} &middot;{" "}
-          {period === "latest" ? "Latest period" : period}
-        </span>
+        <ScopeBar
+          regionId={regionId}
+          period={period}
+          onRegionChange={setRegionId}
+          onPeriodChange={setPeriod}
+        />
       </div>
       <main className="page">
         <header className="page__head">
@@ -28,7 +31,7 @@ export function LandingView() {
           <p>Where we are losing service, and where we are losing money.</p>
         </header>
 
-        <AskPanel regionId={regionId} />
+        <AskPanel regionId={regionId} period={period} />
 
         <div className="grid">
           <section className="group group--service" aria-label="Service loss">

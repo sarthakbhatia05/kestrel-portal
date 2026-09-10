@@ -3,7 +3,7 @@ import pytest
 from kestrel.ask import resolver
 from kestrel.ask.catalogue import Catalogue, RegionEntry
 from kestrel.ask.gemini import LanguageUnavailable
-from kestrel.ask.types import AskGrain, AskIntent, AskMetric, AskTurn
+from kestrel.ask.types import AskGrain, AskIntent, AskMetric, AskMode, AskTurn
 
 
 class FakeModel:
@@ -100,3 +100,25 @@ def test_a_region_named_in_the_question_beats_the_dashboard_scope(catalogue):
     model = FakeModel({"metric": "fill_rate", "region_id": 1})
     intent = resolver.resolve(model, "fill rate in West", catalogue, scope_region_id=2)
     assert intent.region_id == 1
+
+
+def test_a_why_question_can_resolve_to_an_investigation(catalogue):
+    """The mode is chosen in the same call that picks the metric, so a
+    simple lookup never pays for a loop it does not need."""
+    model = FakeModel({"metric": "fill_rate", "grain": "outlet", "period": "FY27Q1",
+                       "region_id": 1, "mode": "investigate"})
+    intent = resolver.resolve(model, "why did fill rate drop in the West?", catalogue)
+    assert intent.mode is AskMode.INVESTIGATE
+
+
+def test_a_plain_lookup_stays_a_lookup(catalogue):
+    model = FakeModel({"metric": "fill_rate", "grain": "outlet", "period": "FY27Q1"})
+    assert resolver.resolve(model, "how is fill rate?", catalogue).mode is AskMode.LOOKUP
+
+
+def test_the_model_is_told_that_causes_are_now_investigable(catalogue):
+    """Regression guard on a deliberate reversal: the prompt used to route
+    every question about a cause to `unsupported`."""
+    model = FakeModel({"metric": "fill_rate"})
+    resolver.resolve(model, "why?", catalogue)
+    assert "investigate" in model.system

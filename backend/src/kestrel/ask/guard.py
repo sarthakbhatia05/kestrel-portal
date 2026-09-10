@@ -55,8 +55,15 @@ def _matches(token: str, numbers: set[float]) -> bool:
     for value in numbers:
         # A rate of 0.9234 may legitimately be written as 92.34%: both the
         # stored fraction and its percentage form count as the same figure.
-        if round(value, decimals) == written or round(value * 100, decimals) == written:
-            return True
+        #
+        # So does its magnitude. A drop is stored as a negative delta, and
+        # English states the size of a fall rather than its sign -- "fell
+        # 0.41 points", not "changed by -0.41 points". The number regex
+        # never captures the minus, so without this every explanation of a
+        # decline would be discarded.
+        for form in (value, value * 100):
+            if round(form, decimals) == written or round(abs(form), decimals) == written:
+                return True
     return False
 
 

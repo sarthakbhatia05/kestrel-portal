@@ -53,6 +53,25 @@ class AskGrain(StrEnum):
     MONTH = "month"
 
 
+MetricResults = (
+    MetricResult | OtifResult | ReturnsResult | NearExpiryResult | ExcursionsResult
+)
+
+
+class AskMode(StrEnum):
+    """How much work a question needs.
+
+    A lookup is one query and one answer -- the path the product has always
+    had. An investigation is several queries, each chosen after seeing the
+    last, for questions like "why did fill rate drop" that cannot be served
+    by any single figure. Resolved by the model in the same call that picks
+    the metric, so a simple question keeps a simple question's latency.
+    """
+
+    LOOKUP = "lookup"
+    INVESTIGATE = "investigate"
+
+
 class AskIntent(BaseModel):
     """A question, resolved into a request the metric layer can serve."""
 
@@ -68,6 +87,51 @@ class AskIntent(BaseModel):
     ascending: bool = False
     q: str | None = Field(default=None, max_length=200)
     include_excluded: bool = False
+    mode: AskMode = AskMode.LOOKUP
+
+
+class AskStep(BaseModel):
+    """The investigator's next move.
+
+    `done` and a null intent are how the loop ends: the model says it has
+    seen enough rather than being cut off, and the cap exists only as a
+    backstop against a model that never stops asking.
+    """
+
+    reasoning: str = ""
+    intent: AskIntent | None = None
+    done: bool = False
+
+
+class StepRecord(BaseModel):
+    """One query the investigator ran, and what came back.
+
+    `error` is set instead of `result` when the intent could not be served
+    (a grain the metric does not have, say). The record is kept either way
+    and fed back to the model, so it learns what it cannot ask for rather
+    than asking again.
+    """
+
+    reasoning: str
+    intent: AskIntent
+    summary: str
+    result: MetricResults | None = None
+    error: str | None = None
+    # The change against the most recent earlier step measuring the same
+    # thing over a different period. Computed here, never by the model:
+    # without it "fell 2.3 points" is a figure in no result, and the guard
+    # would (correctly) drop the sentence carrying it.
+    delta: float | None = None
+    # Which way round the comparison ran, e.g. "FY26 Q4 to FY27 Q1". A bare
+    # number cannot say, and the model reads the sign backwards without it.
+    delta_basis: str | None = None
+
+
+class Investigation(BaseModel):
+    steps: list[StepRecord]
+    answer: str
+    explanation: str | None = None
+    declined: bool = False
 
 
 class AskTurn(BaseModel):
@@ -91,11 +155,7 @@ class AskRequest(BaseModel):
     # PRD C5.3: the selected scope applies to ask-anything too. Overrides
     # nothing the question says explicitly -- see resolver.
     region_id: int | None = None
-
-
-MetricResults = (
-    MetricResult | OtifResult | ReturnsResult | NearExpiryResult | ExcursionsResult
-)
+    period: str | None = None
 
 
 class AskAnswer(BaseModel):
@@ -117,3 +177,7 @@ class AskAnswer(BaseModel):
     result: MetricResults | None = None
     declined: bool = False
     supported_metrics: list[str] | None = None
+    # Present only for an investigation: the queries that were actually
+    # run, in order. The honesty surface -- a reader can see that four real
+    # measurements produced this, rather than a paragraph of prose.
+    steps: list[StepRecord] | None = None

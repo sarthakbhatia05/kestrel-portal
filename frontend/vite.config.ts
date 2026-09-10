@@ -6,7 +6,11 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
-      "/api": { target: "http://127.0.0.1:8000", changeOrigin: true },
+      // Overridable so a second dev instance can point at its own backend.
+      "/api": {
+        target: process.env.KESTREL_API_TARGET ?? "http://127.0.0.1:8000",
+        changeOrigin: true,
+      },
     },
   },
 });

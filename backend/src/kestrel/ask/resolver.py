@@ -42,9 +42,17 @@ Choose exactly one metric:
   Grains: {near_expiry}. It has no period; ignore any period in the question.
 - excursions: cold-chain temperature excursions. Grains: {excursions}.
 - unsupported: the question is about anything else, including forecasts,
-  causes, costs, people, or a metric not in this list. Prefer unsupported
-  over a metric that only loosely matches. Answering the wrong question is
-  worse than declining.
+  costs, people, or a metric not in this list. Prefer unsupported over a
+  metric that only loosely matches. Answering the wrong question is worse
+  than declining.
+
+Also choose a mode:
+- lookup: one figure answers the question. "How is OTIF in the West?"
+- investigate: the question asks why something changed, where a problem is
+  concentrated, or what is driving a number -- anything that needs several
+  measurements compared against each other rather than one. "Why did fill
+  rate drop in the West last week?" Choose the metric the question is
+  about; the investigation decides which measurements to take from there.
 
 Rules:
 - grain must be one of the grains listed for the metric you chose.
@@ -61,6 +69,7 @@ Rules:
   an outlet or route named in the question, since those are not listed here.
 - include_excluded stays false unless the question explicitly asks to include
   excluded, deleted or test records.
+- mode is lookup unless the question needs several measurements compared.
 
 Regions: {regions}
 Warehouses: {warehouses}

@@ -153,12 +153,54 @@ only a breach flag and a peak temperature per delivery; PRD 5.4 is explicit
 that a fuller severity profile must not be invented from those two numbers,
 so none is reported.
 
+**The model plans an investigation; it still computes nothing.** A question
+like "why did fill rate drop in the West last week" has no single figure
+that answers it. The model now chooses a sequence of measurements — the
+week, the week before, then a breakdown — each picked after seeing the
+last, up to six. Every figure still comes from the same metric functions
+the dashboard calls, and the change between two periods is computed in
+Python, because a delta the model worked out itself is a figure with no
+provenance. The panel shows the measurements it took alongside the
+answer, so a reader can check the prose against the queries.
+
+**The model may state causes it cannot measure, and this is a deliberate
+product decision.** The numeric guard still holds absolutely: prose is
+checked against every figure the model was shown and discarded whole if it
+quotes anything else, so a fabricated *number* remains impossible. A
+fabricated *explanation* does not, because "fill rate fell because the
+depot flooded" contains no number to check. We accept that: an operator
+reading a control tower wants a hypothesis to act on, and the measurements
+backing it are on screen to be judged. The cost is real and worth stating
+plainly — some explanations will be confidently wrong in a way no
+automated check catches. C4.4's hard line, that the product must not
+produce a plausible *figure* for a question it cannot answer, is
+unchanged.
+
+**Guarded figures include their own magnitude.** A drop is stored as a
+negative delta and English states its size — "fell 0.41 points", not
+"changed by −0.41 points". The first cut rejected exactly that, so every
+explanation of a decline was silently dropped: the one case the feature
+exists for. Found by running a live question, not by a test.
+
+**Comparisons are oriented by time, not by the order they were measured.**
+The model usually measures the period asked about first and its baseline
+second. Subtracting in step order then reports a rise as a fall, which a
+live run duly did — 86.0% against 85.9% described as "a drop". The delta
+now runs from the chronologically earlier period to the later one and says
+which is which.
+
+**"Last week" means the last complete week.** The data ends mid-week, so
+the week containing the final row holds two days. Comparing it against a
+full week reads as a collapse that is only a truncated period — the same
+trap `latest_complete_quarter` already avoids one grain up, now applied to
+weeks and months.
+
 ## What two more weeks would add
 
-The ask-anything path (the LLM resolves intent into a validated request and
-never sees a row or emits a number, so it cannot invent a figure); the
-quality ledger as a screen, since it is already a table; and the region
-selector, which the URL scope and the endpoint both already carry.
+The quality ledger as a screen, since it is already a table; a drill-down
+view for an investigation, so the analysis is shareable rather than living
+inside one answer; and generated frontend types, since the API contract is
+currently typed by hand.
 
 ## What breaks first
 

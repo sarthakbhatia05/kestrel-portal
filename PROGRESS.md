@@ -9,12 +9,12 @@ Update it at the end of each slice, not continuously.
 
 ---
 
-## Status at 2026-09-09
+## Status at 2026-09-10
 
 | | |
 |---|---|
-| Slices complete | 6 (fill rate, OTIF, returns, near-expiry, excursions, ask-anything) |
-| Backend tests | 186 passing, Ruff clean |
+| Slices complete | 7 (fill rate, OTIF, returns, near-expiry, excursions, ask-anything, scope + investigation) |
+| Backend tests | 254 passing, Ruff clean |
 | Frontend | tsc and oxlint clean; no test suite yet (see Known gaps) |
 | Curated build | 14.4s (warm) — 511,516 order lines, 76,889 deliveries, 14,000 returns, 131,040 inventory snapshots, 42,377 ledger rows |
 | Fill rate query | 0.10s over 68,329 lines (NF3 allows 2s) |
@@ -23,7 +23,10 @@ Update it at the end of each slice, not continuously.
 | Cold start | Verified from a clean `git clone`, README only |
 
 **Metrics live:** fill rate (PRD §5.2), OTIF (PRD §5.3), returns (PRD §5.6), near-expiry (PRD §5.5), excursions (PRD §5.4).
-**Ask-anything (C4)** routes plain-English questions across all five.
+**Ask-anything (C4)** routes plain-English questions across all five, and
+investigates "why" questions by taking several measurements in sequence.
+**Scope** is selectable: region and period (quarters and months in the UI;
+weeks and explicit ranges accepted in a question).
 
 **Original "Slice 3" (PROGRESS.md, 2026-09-09) bundled returns and
 near-expiry.** Split into two on request: they don't share a fact table or
@@ -484,14 +487,101 @@ What changed:
   once. Confirmed with 60 concurrent requests across all four endpoints,
   all 200; regression test added in `test_database.py`.
 
+## Slice 7 — scope controls and an investigating ask (done, 2026-09-10)
+
+Three things asked for together: a region selector, a period selector, and
+ask-anything answering "why did fill rate drop in the West last week?".
+Brainstormed to a design, then implemented directly (spec and plan docs
+skipped on request), TDD throughout.
+
+**The model now decides what to measure.** Previously it resolved a
+question into one `AskIntent` and stopped. It now runs a bounded loop:
+emit a step, we execute it via the existing `dispatch.run`, feed the
+summary back, repeat to a cap of six. Adaptive, so "the drop concentrates
+in three outlets — now check *their* OTIF" is expressible. Built on
+`generate_json`, so the fake-model test seam every other ask test uses is
+untouched.
+
+**Causes are now answered rather than declined** — a deliberate reversal
+of slice 6, recorded in DECISIONS.md with its cost stated. The numeric
+guard is unchanged and now runs over the union of every step's result, so
+the allowed set grows by exactly what the model saw. Invented figures stay
+impossible; invented explanations do not, and that is the accepted
+trade.
+
+What now runs end to end:
+
+- `parse_period` grew a grammar: quarters (unchanged), `2026-06`,
+  `2026-W24`, `2026-04-01..2026-06-30`. `Period` carries a `kind` so
+  `previous_period` can step back by the right unit.
+- `kestrel/reference/` — previously an empty placeholder package — gained
+  `scope.py` and a router. `GET /api/service/reference/scope` returns
+  regions and the periods that actually have rows (6 quarters, 18 months
+  against the real data), so the dropdown cannot offer an empty view. A
+  test asserts every period offered is one the metric API accepts.
+- `ask/investigate.py`: the loop, the chronological delta, and the
+  coverage note that tells the model when the data ends.
+- `POST /api/service/ask/stream` (SSE) beside the existing JSON endpoint,
+  which stays as the C4.6 fallback. Steps stream as they land.
+- Frontend: `ScopeBar` in the topbar (region and period selects, both fed
+  by the reference endpoint); the topbar reads "West · June 2026" rather
+  than `Region 3 · latest`; `AskPanel` consumes the stream, showing each
+  measurement live and then folding them into a "2 measurements taken"
+  trail beneath the explanation.
+- C5.3 closed properly: the dashboard's *period* now reaches ask-anything
+  the same way its region always did.
+
+### Four bugs the live model found that the fake could not
+
+Same pattern as slice 6 — a scripted model cannot surface any of these.
+
+- **Every explanation of a decline was silently dropped.** A drop is a
+  negative delta; English states its magnitude ("fell 0.41 points"); the
+  number regex never captures the minus, so the guard rejected it. The
+  feature's whole purpose, broken, and green on every test.
+- **The delta was subtracted in step order, not time order.** The model
+  measures the recent period first, so a rise was reported as a fall —
+  live, "86.0% vs 85.9%" was explained as "a drop". Deltas now run
+  earlier→later and carry a `delta_basis` naming both ends.
+- **"Last week" resolved to a two-day week.** The data ends Tuesday
+  30 June, so the containing week is part-covered; comparing it against a
+  full week manufactures a collapse. The coverage note now names the last
+  *complete* week and month, which is what `latest_complete_quarter`
+  already does one grain up.
+- **Three of six steps were spent re-measuring the same quarter**, because
+  nothing told the model when the data ends or what "last week" means in
+  it. Fixed by the coverage note plus deduplicating repeated intents.
+
+A fifth, caught by reasoning rather than a live call: the guard walked the
+whole `StepRecord`, including the model's own `reasoning` text — so a model
+could write a figure into one step's reasoning and quote it as a finding in
+the next. It now walks only the fields we computed.
+
+### Housekeeping
+
+- `vite.config.ts` reads `KESTREL_API_TARGET` for its `/api` proxy,
+  defaulting to `127.0.0.1:8000` as before. Needed because another session
+  held port 8000 running stale code, and a live check against it nearly
+  passed for the wrong reason — a second dev instance can now point at its
+  own backend.
+- Hand-tested end to end on the standard ports (backend 8000, frontend
+  5173) against the real curated database and a live Gemini key.
+
+### Where it ended up
+
+Asked "why did fill rate drop in the West last week?" against the real
+511k-row database, it measures the last complete week, measures the week
+before, computes the change — and answers that **there was no drop**: the
+rate rose 0.08 points. Contradicting a leading question is the behaviour
+worth having.
+
 ## Next
 
-**Configure `KESTREL_GEMINI_API_KEY` and verify ask end to end** — the one
-piece of slice 6 a fake model cannot cover.
+**The quality-ledger screen** — the table is already populated by the
+build; nothing renders it.
 
-**Small, fold into a slice rather than planning separately:** the quality-ledger
-screen (the table is already populated) and the region selector (`useScope`
-carries `regionId`, the endpoint accepts it).
+**A drill-down view for an investigation**, so an analysis is shareable by
+URL rather than living inside one answer in one session's panel.
 
 ---
 
@@ -499,11 +589,15 @@ carries `regionId`, the endpoint accepts it).
 
 - `unmeasured_count` is now live (OTIF's unparseable-arrival case) but reads 0
   against the real data, since `actual_arrival` is never NULL there.
-- No frontend tests yet. The API contract is typed by hand in `api/types.ts`
-  rather than generated from the OpenAPI schema, so the two can drift.
+- No frontend tests yet, including none over the SSE stream parser, which
+  is the fiddliest logic on that side. The API contract is typed by hand in
+  `api/types.ts` rather than generated from the OpenAPI schema, so the two
+  can drift.
 - Transform is a full rebuild. Fine at 511k lines; not at 50 million.
-- `coldchain/`, `quality/` and `reference/` are empty packages that exist to
-  make the intended structure visible. `ask/` is now populated.
-- Ask-anything has no live-model test. The resolver's prompt quality — does
-  a real Gemini call map real questions onto the right intent — is unproven
-  until a key is configured.
+- `coldchain/` and `quality/` are empty packages that exist to make the
+  intended structure visible. `ask/` and `reference/` are now populated.
+- Ask-anything has no automated live-model test. Prompt quality is verified
+  by hand against a real key, which is how all five of the above were found
+  and is not a substitute for a test.
+- An investigation costs ~6 model calls and 15-25 seconds. Streaming makes
+  that legible, not fast.

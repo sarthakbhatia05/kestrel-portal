@@ -95,3 +95,28 @@ kestrel_ops.db  ──(read-only)──>  transform  ──>  kestrel_curated.db
 Reporting surfaces read the curated database only. Every figure is produced by
 exactly one metric implementation and is returned with the basis on which it
 was derived.
+
+## Scope
+
+Region and period are selected in the top bar and held in the URL, so any view
+is shareable by pasting the address, and the same scope applies to every card
+and to the ask panel. The dropdown offers the fiscal quarters and calendar
+months that actually contain rows — it is built from the data, not a fixed
+list. Questions may additionally name a week (`2026-W24`) or an explicit range
+(`2026-04-01..2026-06-30`).
+
+## Ask anything
+
+Ask a plain-English question about any of the five metrics. Simple questions
+resolve to one measurement and answer immediately.
+
+A question about *why* something moved starts an investigation: the model
+chooses a sequence of measurements — the period, the period before it, then a
+breakdown — each picked after seeing the result of the last, up to six. Every
+figure comes from the same metric functions the dashboard calls; the model
+picks which to run and explains what they show, but computes nothing itself,
+and any sentence quoting a figure it was not shown is discarded. The
+measurements taken are listed under each answer.
+
+This needs `KESTREL_GEMINI_API_KEY` in `.env`. Without it the panel says so
+and every dashboard figure works exactly as before.

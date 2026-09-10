@@ -74,3 +74,14 @@ def test_apply_returns_prose_when_it_passes():
 
 def test_apply_drops_prose_when_it_fails():
     assert guard.apply("Fill rate was 87.5%.", _result()) is None
+
+
+def test_the_magnitude_of_a_negative_figure_is_quotable():
+    """A drop is stored as a negative delta, and English states its size:
+    "fell 0.41 points", not "changed by -0.41 points". Rejecting that would
+    drop the explanation of every decline -- the case the loop exists for."""
+    assert guard.check("Fill rate fell 0.41 percentage points.", {"delta": -0.0041})
+
+
+def test_a_magnitude_that_matches_nothing_is_still_rejected():
+    assert not guard.check("Fill rate fell 9.90 percentage points.", {"delta": -0.0041})

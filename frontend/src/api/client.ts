@@ -11,6 +11,8 @@ import type {
   OtifResult,
   ReturnsGrain,
   ReturnsResult,
+  AskEvent,
+  ScopeOptions,
   Unit,
 } from "./types";
 
@@ -162,6 +164,7 @@ export async function postAsk(body: {
   question: string;
   window: AskTurn[];
   regionId: number | null;
+  period?: string;
 }): Promise<AskAnswer> {
   const response = await fetch("/api/service/ask", {
     method: "POST",
@@ -170,6 +173,7 @@ export async function postAsk(body: {
       question: body.question,
       window: body.window,
       region_id: body.regionId,
+      period: body.period,
     }),
   });
   if (!response.ok) {
@@ -180,4 +184,72 @@ export async function postAsk(body: {
     );
   }
   return response.json() as Promise<AskAnswer>;
+}
+
+/**
+ * The regions and periods the selectors offer.
+ *
+ * Fetched rather than hard-coded: the server derives periods from the
+ * order dates actually present, so the dropdown can never offer a period
+ * that renders five empty cards.
+ */
+export function fetchScope(): Promise<ScopeOptions> {
+  return get<ScopeOptions>("/api/service/reference/scope", {});
+}
+
+/**
+ * Ask, streaming each measurement as the investigation takes it.
+ *
+ * The server emits one JSON object per SSE frame, each tagged with a
+ * `type`. Frames can be split across network chunks, so the buffer is
+ * drained on blank-line boundaries rather than per chunk — a step landing
+ * mid-packet would otherwise be parsed as truncated JSON.
+ */
+export async function streamAsk(
+  body: {
+    question: string;
+    window: AskTurn[];
+    regionId: number | null;
+    period?: string;
+  },
+  onEvent: (event: AskEvent) => void,
+): Promise<void> {
+  const response = await fetch("/api/service/ask/stream", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      question: body.question,
+      window: body.window,
+      region_id: body.regionId,
+      period: body.period,
+    }),
+  });
+
+  if (!response.ok) {
+    const payload = await response.json().catch(() => null);
+    throw new ApiError(
+      payload?.error?.code ?? "UNKNOWN",
+      payload?.error?.message ?? `Request failed with ${response.status}`,
+    );
+  }
+  if (!response.body) throw new ApiError("NO_STREAM", "The server sent no response body.");
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+
+    let boundary = buffer.indexOf("\n\n");
+    while (boundary !== -1) {
+      const frame = buffer.slice(0, boundary);
+      buffer = buffer.slice(boundary + 2);
+      const line = frame.split("\n").find((part) => part.startsWith("data: "));
+      if (line) onEvent(JSON.parse(line.slice("data: ".length)) as AskEvent);
+      boundary = buffer.indexOf("\n\n");
+    }
+  }
 }

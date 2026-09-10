@@ -1,9 +1,16 @@
 from datetime import date
 
+import pytest
+
 from kestrel.fiscal import (
+    PeriodKind,
+    custom_period,
     fiscal_year_and_quarter,
     latest_complete_quarter,
+    month_period,
+    previous_period,
     quarter_period,
+    week_period,
 )
 
 
@@ -40,3 +47,78 @@ def test_latest_complete_quarter_wraps_back_across_the_fiscal_year():
     period = latest_complete_quarter(date(2026, 5, 10))
     assert period.label == "FY26 Q4"
     assert (period.start, period.end) == (date(2026, 1, 1), date(2026, 3, 31))
+
+
+# --- Sub-quarter periods -------------------------------------------------
+#
+# The dashboard offers quarters and months; ask-anything additionally
+# accepts weeks and explicit ranges, because "last week" is a thing people
+# type and not a thing anyone wants to scroll a dropdown for.
+
+
+def test_month_period_spans_the_calendar_month():
+    period = month_period(2026, 6)
+    assert (period.start, period.end) == (date(2026, 6, 1), date(2026, 6, 30))
+    assert period.label == "June 2026"
+    assert period.kind is PeriodKind.MONTH
+
+
+def test_month_period_handles_february_in_a_leap_year():
+    period = month_period(2024, 2)
+    assert period.end == date(2024, 2, 29)
+
+
+def test_week_period_runs_monday_to_sunday():
+    # 2026-W24 begins Monday 8 June 2026.
+    period = week_period(2026, 24)
+    assert (period.start, period.end) == (date(2026, 6, 8), date(2026, 6, 14))
+    assert period.start.weekday() == 0
+    assert period.label == "Week of 8 Jun 2026"
+    assert period.kind is PeriodKind.WEEK
+
+
+def test_custom_period_spans_the_dates_given():
+    period = custom_period(date(2026, 4, 1), date(2026, 6, 30))
+    assert (period.start, period.end) == (date(2026, 4, 1), date(2026, 6, 30))
+    assert period.label == "1 Apr – 30 Jun 2026"
+    assert period.kind is PeriodKind.RANGE
+
+
+def test_custom_period_rejects_an_end_before_its_start():
+    with pytest.raises(ValueError):
+        custom_period(date(2026, 6, 30), date(2026, 4, 1))
+
+
+def test_quarter_period_is_labelled_a_quarter():
+    assert quarter_period(2027, 1).kind is PeriodKind.QUARTER
+
+
+# --- Comparison baselines ------------------------------------------------
+#
+# "Why did fill rate drop" needs something to have dropped *from*. The
+# baseline is always the preceding period of the same kind, so a question
+# about a week is answered against a week and never against a quarter.
+
+
+def test_previous_quarter_steps_back_one_quarter():
+    assert previous_period(quarter_period(2027, 1)).label == "FY26 Q4"
+
+
+def test_previous_quarter_wraps_across_the_fiscal_year_boundary():
+    """FY27 Q1 starts in April, so its predecessor is the January–March quarter."""
+    previous = previous_period(quarter_period(2027, 1))
+    assert (previous.start, previous.end) == (date(2026, 1, 1), date(2026, 3, 31))
+
+
+def test_previous_month_steps_back_across_january():
+    assert previous_period(month_period(2026, 1)).label == "December 2025"
+
+
+def test_previous_week_steps_back_seven_days():
+    previous = previous_period(week_period(2026, 24))
+    assert (previous.start, previous.end) == (date(2026, 6, 1), date(2026, 6, 7))
+
+
+def test_previous_range_is_the_equally_long_span_immediately_before():
+    previous = previous_period(custom_period(date(2026, 6, 15), date(2026, 6, 21)))
+    assert (previous.start, previous.end) == (date(2026, 6, 8), date(2026, 6, 14))

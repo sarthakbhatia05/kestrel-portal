@@ -1,8 +1,25 @@
 from calendar import monthrange
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, timedelta
+from enum import StrEnum
 
 DEFAULT_START_MONTH = 4  # PRD 5.7: financial year runs April to March.
+
+
+class PeriodKind(StrEnum):
+    """What sort of span a period is.
+
+    Carried on the period itself because the comparison baseline depends on
+    it: the period before FY27 Q1 is a quarter, and the period before a week
+    is a week. Without the kind, `previous_period` would have to infer it
+    from the dates, and a 31-day month would be indistinguishable from an
+    arbitrary 31-day range.
+    """
+
+    QUARTER = "quarter"
+    MONTH = "month"
+    WEEK = "week"
+    RANGE = "range"
 
 
 @dataclass(frozen=True)
@@ -10,6 +27,7 @@ class Period:
     start: date
     end: date
     label: str
+    kind: PeriodKind = PeriodKind.QUARTER
 
 
 def fiscal_year_and_quarter(
@@ -44,6 +62,7 @@ def quarter_period(
         start=date(start_year, start_month_no, 1),
         end=date(end_year, end_month_no, monthrange(end_year, end_month_no)[1]),
         label=f"FY{fiscal_year % 100:02d} Q{quarter}",
+        kind=PeriodKind.QUARTER,
     )
 
 
@@ -55,3 +74,74 @@ def latest_complete_quarter(
     if quarter == 1:
         return quarter_period(fiscal_year - 1, 4, start_month)
     return quarter_period(fiscal_year, quarter - 1, start_month)
+
+
+def month_period(year: int, month: int) -> Period:
+    """A calendar month. Months are calendar, not fiscal: nobody asks for
+    "the first month of Q1", they ask for June."""
+    if not 1 <= month <= 12:
+        raise ValueError(f"Month must be 1-12, got {month}")
+    start = date(year, month, 1)
+    return Period(
+        start=start,
+        end=date(year, month, monthrange(year, month)[1]),
+        label=f"{start:%B} {year}",
+        kind=PeriodKind.MONTH,
+    )
+
+
+def week_period(iso_year: int, iso_week: int) -> Period:
+    """An ISO week, Monday to Sunday.
+
+    ISO rather than a rolling seven days, so that "last week" means the same
+    span to two people who ask on different days.
+    """
+    start = date.fromisocalendar(iso_year, iso_week, 1)
+    return Period(
+        start=start,
+        end=start + timedelta(days=6),
+        label=f"Week of {start.day} {start:%b} {start.year}",
+        kind=PeriodKind.WEEK,
+    )
+
+
+def custom_period(start: date, end: date) -> Period:
+    """An explicit span, inclusive of both ends."""
+    if end < start:
+        raise ValueError(f"Period end {end} falls before its start {start}")
+    left = f"{start.day} {start:%b}"
+    if start.year != end.year:
+        left = f"{left} {start.year}"
+    return Period(
+        start=start,
+        end=end,
+        label=f"{left} – {end.day} {end:%b} {end.year}",
+        kind=PeriodKind.RANGE,
+    )
+
+
+def previous_period(period: Period, start_month: int = DEFAULT_START_MONTH) -> Period:
+    """The period immediately before this one, of the same kind.
+
+    The baseline for every period-over-period comparison. Same kind
+    deliberately: a question about a week is answered against the previous
+    week, never against a quarter that happens to contain it.
+    """
+    if period.kind is PeriodKind.QUARTER:
+        fiscal_year, quarter = fiscal_year_and_quarter(period.start, start_month)
+        if quarter == 1:
+            return quarter_period(fiscal_year - 1, 4, start_month)
+        return quarter_period(fiscal_year, quarter - 1, start_month)
+
+    if period.kind is PeriodKind.MONTH:
+        last_day_before = period.start - timedelta(days=1)
+        return month_period(last_day_before.year, last_day_before.month)
+
+    if period.kind is PeriodKind.WEEK:
+        start = period.start - timedelta(days=7)
+        iso_year, iso_week, _ = start.isocalendar()
+        return week_period(iso_year, iso_week)
+
+    length = (period.end - period.start).days
+    end = period.start - timedelta(days=1)
+    return custom_period(end - timedelta(days=length), end)

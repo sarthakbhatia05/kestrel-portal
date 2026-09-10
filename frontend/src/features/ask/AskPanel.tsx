@@ -1,13 +1,13 @@
 import { useRef, useState } from "react";
 
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 
-import { fetchAskCapability, postAsk } from "../../api/client";
-import type { AskAnswer, AskResult, AskTurn } from "../../api/types";
+import { fetchAskCapability, fetchScope, streamAsk } from "../../api/client";
+import type { AskAnswer, AskResult, AskTurn, StepRecord } from "../../api/types";
 
 const EXAMPLES = [
   "Which five outlets had the worst fill rate last quarter?",
-  "How is OTIF in the West region?",
+  "Why did fill rate drop in the West last week?",
   "Where is near-expiry stock concentrated?",
 ];
 
@@ -19,7 +19,9 @@ const percent = (value: number | null) =>
 
 interface Turn {
   question: string;
-  answer: AskAnswer;
+  steps: StepRecord[];
+  answer: AskAnswer | null;
+  error: string | null;
 }
 
 /**
@@ -59,42 +61,133 @@ function Supporting({ result }: { result: AskResult }) {
 }
 
 /**
+ * What the investigation actually measured, in order.
+ *
+ * This is the honesty surface. The explanation above it is the model
+ * reasoning about figures; this is the list of real queries that produced
+ * them, each with the sentence stating its figure, period, scope and
+ * exclusions. A reader who distrusts the prose can check it here.
+ */
+function Trail({ steps, live }: { steps: StepRecord[]; live: boolean }) {
+  if (steps.length === 0) return null;
+  const body = (
+    <ol className="ask__trail">
+      {steps.map((step, index) => (
+        <li key={index} className={step.error ? "is-failed" : undefined}>
+          <p className="ask__step-reason">{step.reasoning}</p>
+          {step.error ? (
+            <p className="ask__step-error">Could not measure: {step.error}</p>
+          ) : (
+            <p className="ask__step-summary">{step.summary}</p>
+          )}
+          {step.delta !== null && (
+            <p className="ask__step-delta">
+              {step.delta >= 0 ? "Up" : "Down"}{" "}
+              <span className="mono">{Math.abs(step.delta * 100).toFixed(2)}</span>{" "}
+              percentage points{step.delta_basis ? ` from ${step.delta_basis}` : ""}.
+            </p>
+          )}
+        </li>
+      ))}
+    </ol>
+  );
+
+  // While it runs, the steps are the content. Once the answer lands they
+  // become supporting evidence, folded away but one click from view.
+  if (live) return body;
+  return (
+    <details className="ask__trail-wrap">
+      <summary>
+        {steps.length} measurement{steps.length === 1 ? "" : "s"} taken
+      </summary>
+      {body}
+    </details>
+  );
+}
+
+/**
  * Ask anything (PRD C4).
  *
  * The panel renders the deterministic answer as the answer of record;
  * `prose` is model framing that already passed the server's numeric guard
  * and is shown above it, never instead of it. When the language capability
- * is not configured the panel does not render at all, and every dashboard
- * figure is unaffected (C4.6).
+ * is not configured the panel says so and every dashboard figure is
+ * unaffected (C4.6).
  */
-export function AskPanel({ regionId }: { regionId: number | null }) {
+export function AskPanel({
+  regionId,
+  period,
+}: {
+  regionId: number | null;
+  period: string;
+}) {
   const [turns, setTurns] = useState<Turn[]>([]);
   const [draft, setDraft] = useState("");
+  const [pending, setPending] = useState(false);
   const log = useRef<HTMLDivElement>(null);
 
   const capability = useQuery({
     queryKey: ["ask-capability"],
     queryFn: fetchAskCapability,
   });
+  // Shares react-query's cache with ScopeBar, so naming the scope here
+  // costs no extra request.
+  const scope = useQuery({ queryKey: ["scope"], queryFn: fetchScope });
 
-  const ask = useMutation({
-    mutationFn: (question: string) =>
-      postAsk({
-        question,
-        window: turns
-          .filter((turn): turn is Turn & { answer: AskAnswer } => turn.answer.intent !== null)
-          .slice(-WINDOW_SIZE)
-          .map<AskTurn>((turn) => ({
-            question: turn.question,
-            intent: turn.answer.intent!,
-          })),
-        regionId,
-      }),
-    onSuccess: (answer) => {
-      setTurns((previous) => [...previous, { question: answer.question, answer }]);
-      requestAnimationFrame(() => log.current?.scrollTo(0, log.current.scrollHeight));
-    },
-  });
+  const regionName =
+    regionId === null
+      ? "All regions"
+      : (scope.data?.regions.find((r) => r.region_id === regionId)?.region_name ??
+        `Region ${regionId}`);
+  const periodLabel =
+    scope.data?.periods.find((p) => p.value === period)?.label ?? period;
+
+  const scrollDown = () =>
+    requestAnimationFrame(() => log.current?.scrollTo(0, log.current.scrollHeight));
+
+  const submit = async (question: string) => {
+    const trimmed = question.trim();
+    if (!trimmed || pending) return;
+    setDraft("");
+    setPending(true);
+
+    const index = turns.length;
+    const window: AskTurn[] = turns
+      .filter((turn) => turn.answer?.intent)
+      .slice(-WINDOW_SIZE)
+      .map((turn) => ({ question: turn.question, intent: turn.answer!.intent! }));
+
+    setTurns((previous) => [
+      ...previous,
+      { question: trimmed, steps: [], answer: null, error: null },
+    ]);
+    scrollDown();
+
+    const patch = (change: (turn: Turn) => Turn) =>
+      setTurns((previous) =>
+        previous.map((turn, position) => (position === index ? change(turn) : turn)),
+      );
+
+    try {
+      await streamAsk({ question: trimmed, window, regionId, period }, (event) => {
+        if (event.type === "step") {
+          const { type: _type, ...step } = event;
+          patch((turn) => ({ ...turn, steps: [...turn.steps, step] }));
+        } else if (event.type === "answer") {
+          const { type: _type, ...answer } = event;
+          patch((turn) => ({ ...turn, answer, steps: answer.steps ?? turn.steps }));
+        } else {
+          patch((turn) => ({ ...turn, error: event.message }));
+        }
+        scrollDown();
+      });
+    } catch (error) {
+      patch((turn) => ({ ...turn, error: (error as Error).message }));
+    } finally {
+      setPending(false);
+      scrollDown();
+    }
+  };
 
   if (capability.isPending) return null;
 
@@ -122,13 +215,6 @@ export function AskPanel({ regionId }: { regionId: number | null }) {
       </section>
     );
 
-  const submit = (question: string) => {
-    const trimmed = question.trim();
-    if (!trimmed || ask.isPending) return;
-    setDraft("");
-    ask.mutate(trimmed);
-  };
-
   return (
     <section className="card ask" aria-label="Ask anything">
       <header className="card__head">
@@ -136,18 +222,21 @@ export function AskPanel({ regionId }: { regionId: number | null }) {
           <h2>Ask</h2>
         </div>
         <span className="ask__scope">
-          {regionId === null ? "All regions" : `Region ${regionId}`}
+          {regionName} &middot; {periodLabel}
         </span>
       </header>
 
       <div className="ask__log" ref={log} aria-live="polite">
         {turns.length === 0 && (
           <div className="ask__empty">
-            <p>Ask about fill rate, OTIF, returns, near-expiry stock or excursions.</p>
+            <p>
+              Ask about fill rate, OTIF, returns, near-expiry stock or excursions —
+              or ask why one of them moved.
+            </p>
             <ul className="ask__examples">
               {EXAMPLES.map((example) => (
                 <li key={example}>
-                  <button type="button" onClick={() => submit(example)}>
+                  <button type="button" onClick={() => void submit(example)}>
                     {example}
                   </button>
                 </li>
@@ -159,27 +248,35 @@ export function AskPanel({ regionId }: { regionId: number | null }) {
         {turns.map((turn, index) => (
           <div key={index} className="ask__turn">
             <p className="ask__question">{turn.question}</p>
-            <div
-              className={turn.answer.declined ? "ask__answer is-declined" : "ask__answer"}
-            >
-              {turn.answer.prose && <p className="ask__prose">{turn.answer.prose}</p>}
-              <p className="ask__record">{turn.answer.answer}</p>
-              {turn.answer.result && <Supporting result={turn.answer.result} />}
-            </div>
+
+            <Trail steps={turn.steps} live={turn.answer === null && turn.error === null} />
+
+            {turn.answer === null && turn.error === null && (
+              <p className="ask__pending">
+                {turn.steps.length === 0 ? "Reading the question…" : "Measuring…"}
+              </p>
+            )}
+
+            {turn.answer && (
+              <div
+                className={turn.answer.declined ? "ask__answer is-declined" : "ask__answer"}
+              >
+                {turn.answer.prose && <p className="ask__prose">{turn.answer.prose}</p>}
+                <p className="ask__record">{turn.answer.answer}</p>
+                {turn.answer.result && <Supporting result={turn.answer.result} />}
+              </div>
+            )}
+
+            {turn.error && <p className="ask__error">{turn.error}</p>}
           </div>
         ))}
-
-        {ask.isPending && <p className="ask__pending">Working…</p>}
-        {ask.error && (
-          <p className="ask__error">{(ask.error as Error).message}</p>
-        )}
       </div>
 
       <form
         className="ask__form"
         onSubmit={(event) => {
           event.preventDefault();
-          submit(draft);
+          void submit(draft);
         }}
       >
         <input
@@ -190,7 +287,7 @@ export function AskPanel({ regionId }: { regionId: number | null }) {
           aria-label="Question"
           onChange={(event) => setDraft(event.target.value)}
         />
-        <button type="submit" disabled={ask.isPending || draft.trim() === ""}>
+        <button type="submit" disabled={pending || draft.trim() === ""}>
           Ask
         </button>
       </form>

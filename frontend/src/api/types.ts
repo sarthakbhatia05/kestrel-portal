@@ -176,6 +176,25 @@ export interface AskIntent {
   ascending: boolean;
   q: string | null;
   include_excluded: boolean;
+  mode: AskMode;
+}
+
+/** Whether a question needs one measurement or several compared. */
+export type AskMode = "lookup" | "investigate";
+
+/** One measurement an investigation took, and why.
+ *
+ * The `result` is stripped from the streamed step (the rows arrive with
+ * the final answer); `delta` is the change against an earlier step of the
+ * same metric, computed server-side so no figure originates with the model. */
+export interface StepRecord {
+  reasoning: string;
+  intent: AskIntent;
+  summary: string;
+  error: string | null;
+  delta: number | null;
+  /** Which way round the comparison ran, e.g. "FY26 Q4 to FY27 Q1". */
+  delta_basis: string | null;
 }
 
 export interface AskTurn {
@@ -200,9 +219,34 @@ export interface AskAnswer {
   result: AskResult | null;
   declined: boolean;
   supported_metrics: string[] | null;
+  /** Present only for an investigation: the measurements actually run. */
+  steps: StepRecord[] | null;
 }
+
+/** One frame of a streamed answer. */
+export type AskEvent =
+  | ({ type: "step" } & StepRecord)
+  | ({ type: "answer" } & AskAnswer)
+  | { type: "error"; message: string };
 
 export interface AskCapability {
   available: boolean;
   supported_metrics: string[];
+}
+
+/** Scope options, derived from the data rather than hard-coded. */
+export interface RegionOption {
+  region_id: number;
+  region_name: string;
+}
+
+export interface PeriodOption {
+  value: string;
+  label: string;
+  kind: "quarter" | "month" | "relative";
+}
+
+export interface ScopeOptions {
+  regions: RegionOption[];
+  periods: PeriodOption[];
 }

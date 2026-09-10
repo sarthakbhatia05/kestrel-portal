@@ -165,3 +165,129 @@ def test_an_unreachable_model_is_an_outage_not_a_decline(make_client):
     response = client.post("/api/service/ask", json={"question": "fill rate?"})
     assert response.status_code == 503
     assert response.json()["error"]["code"] == "ASK_UNAVAILABLE"
+
+
+class SequencedModel:
+    """Returns each scripted JSON payload in turn.
+
+    An investigation makes one call to resolve the question and one per
+    step, so a single canned payload is not enough to drive it.
+    """
+
+    def __init__(self, payloads, prose="Fill rate fell in the West."):
+        self.payloads = list(payloads)
+        self.prose = prose
+
+    def generate_json(self, *, system, prompt, schema):
+        return self.payloads.pop(0) if self.payloads else {"done": True}
+
+    def generate_text(self, *, system, prompt):
+        return self.prose
+
+
+INVESTIGATE = {"metric": "fill_rate", "grain": "outlet", "period": "FY27Q1",
+               "region_id": 1, "mode": "investigate"}
+STEP_Q1 = {"reasoning": "Fill rate for the quarter.",
+           "intent": {"metric": "fill_rate", "grain": "outlet", "period": "FY27Q1"}}
+STEP_Q4 = {"reasoning": "The quarter before, to compare.",
+           "intent": {"metric": "fill_rate", "grain": "outlet", "period": "FY26Q4"}}
+
+
+def test_an_investigation_returns_the_steps_it_ran(make_client):
+    """The honesty surface: what produced this answer is visible."""
+    client = make_client(SequencedModel([INVESTIGATE, STEP_Q1, STEP_Q4, {"done": True}]))
+    body = client.post("/api/service/ask", json={"question": "why did fill rate drop?"}).json()
+    assert [step["reasoning"] for step in body["steps"]] == [
+        "Fill rate for the quarter.",
+        "The quarter before, to compare.",
+    ]
+
+
+def test_an_investigation_states_every_measurement_in_the_answer_of_record(make_client):
+    client = make_client(SequencedModel([INVESTIGATE, STEP_Q1, STEP_Q4, {"done": True}]))
+    body = client.post("/api/service/ask", json={"question": "why did fill rate drop?"}).json()
+    assert "FY27 Q1" in body["answer"]
+    assert "FY26 Q4" in body["answer"]
+    assert body["declined"] is False
+
+
+def test_a_lookup_still_answers_in_one_step_with_no_trail(make_client):
+    """The path that already existed is untouched by the loop."""
+    client = make_client(FakeModel({"metric": "fill_rate", "grain": "outlet",
+                                    "period": "FY27Q1"}))
+    body = client.post("/api/service/ask", json={"question": "how is fill rate?"}).json()
+    assert body["steps"] is None
+    assert body["result"] is not None
+
+
+def test_the_dashboards_period_reaches_ask_anything(make_client):
+    """C5.3: one scope, applied to every surface -- period as well as region."""
+    client = make_client(FakeModel({"metric": "fill_rate", "grain": "outlet",
+                                    "period": "latest"}))
+    body = client.post(
+        "/api/service/ask", json={"question": "how is fill rate?", "period": "FY26Q4"}
+    ).json()
+    assert body["result"]["basis"]["period_label"] == "FY26 Q4"
+
+
+def test_a_period_named_in_the_question_still_beats_the_dashboard(make_client):
+    client = make_client(FakeModel({"metric": "fill_rate", "grain": "outlet",
+                                    "period": "FY27Q1"}))
+    body = client.post(
+        "/api/service/ask", json={"question": "fill rate in FY27 Q1?", "period": "FY26Q4"}
+    ).json()
+    assert body["result"]["basis"]["period_label"] == "FY27 Q1"
+
+
+def test_an_investigation_that_measures_nothing_declines(make_client):
+    """No measurement means no answer -- not a paragraph of prose (C4.4)."""
+    impossible = {"reasoning": "Returns by outlet.",
+                  "intent": {"metric": "returns", "grain": "outlet", "period": "FY27Q1"}}
+    client = make_client(SequencedModel([INVESTIGATE, impossible, {"done": True}]))
+    body = client.post("/api/service/ask", json={"question": "why?"}).json()
+    assert body["declined"] is True
+    assert body["prose"] is None
+
+
+def _events(client, payload):
+    """Parse an SSE response into the JSON objects it carried."""
+    import json
+
+    with client.stream("POST", "/api/service/ask/stream", json=payload) as response:
+        assert response.status_code == 200
+        assert response.headers["content-type"].startswith("text/event-stream")
+        return [
+            json.loads(line[len("data: "):])
+            for line in response.iter_lines()
+            if line.startswith("data: ")
+        ]
+
+
+def test_streaming_emits_each_step_before_the_answer(make_client):
+    """A six-step investigation is ten seconds of silence otherwise."""
+    client = make_client(SequencedModel([INVESTIGATE, STEP_Q1, STEP_Q4, {"done": True}]))
+    events = _events(client, {"question": "why did fill rate drop?"})
+    assert [event["type"] for event in events] == ["step", "step", "answer"]
+    assert events[0]["reasoning"] == "Fill rate for the quarter."
+
+
+def test_streaming_answer_event_carries_the_whole_answer(make_client):
+    client = make_client(SequencedModel([INVESTIGATE, STEP_Q1, STEP_Q4, {"done": True}]))
+    events = _events(client, {"question": "why did fill rate drop?"})
+    answer = events[-1]
+    assert "FY27 Q1" in answer["answer"]
+    assert len(answer["steps"]) == 2
+
+
+def test_streaming_a_lookup_emits_no_steps_only_an_answer(make_client):
+    client = make_client(FakeModel({"metric": "fill_rate", "grain": "outlet",
+                                    "period": "FY27Q1"}))
+    events = _events(client, {"question": "how is fill rate?"})
+    assert [event["type"] for event in events] == ["answer"]
+    assert events[0]["result"] is not None
+
+
+def test_streaming_a_declined_question_says_so_in_the_answer_event(make_client):
+    client = make_client(FakeModel({"metric": "unsupported"}))
+    events = _events(client, {"question": "what is our headcount?"})
+    assert events[-1]["declined"] is True
