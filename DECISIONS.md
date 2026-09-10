@@ -2,32 +2,44 @@
 
 ## What I built
 
-- **A curated layer.** `python -m kestrel.transform build` reads `kestrel_ops.db` read-only and writes `kestrel_curated.db`. Every row it excludes or repairs is written to a quality ledger naming the rule. The biggest are X4, 41,401 cancelled or open orders, and N4, 900 negative return quantities.
-- **Five measures, one implementation each,** returned with their basis (period, scope, unit, exclusions, row count). Fill rate and OTIF cover region to outlet; then returns and credit-note leakage, near-expiry stock and temperature excursions. One screen shows all five with the worst performers already listed. Region and period live in the URL, which gives regional managers their own view.
-- **A data quality view.** For the selected scope it shows what each figure leaves out and why, down to the ledger records. It answers "four people, four numbers".
-- **Ask-anything.** Gemini picks up to six measurements from the same functions the dashboard calls. It computes nothing, and prose quoting a figure it was not shown is discarded.
+**A clean copy of the data.** One command reads Kestrel's database without changing it and builds a cleaned copy. Every row left out or corrected is logged with the reason: for example, 41,401 cancelled or open orders left out, and 900 negative return quantities corrected.
+
+**One screen, five numbers:** fill rate, on-time-in-full, returns, stock near expiry, and temperature breaches on chilled deliveries. The worst performers are listed straight away. Every number states what it is based on: period, region, unit, what was excluded, and how many records. Region and period sit in the page address, so a regional manager can bookmark their own view.
+
+**A data quality page** showing what each number leaves out and why, down to the individual records. When two people's numbers differ, the question becomes "which rule did you apply differently?", not "who is right?".
+
+**A chatbot ("Ask anything")** for plain-English questions:
+- **Simple questions** get one direct answer.
+- **"Why" questions start a short investigation.** Asked "why did fill rate drop in the West last week?", it checks that week, then the week before, then breaks the change down. It picks each step after seeing the last, up to six.
+- **You watch it work.** Steps appear as they happen, and the answer lists the measurements behind it.
+- **Follow-ups work.** "And the South?" builds on the previous question; it remembers the last ten.
+- **It follows the dashboard's region and period,** and declines what the data can't answer, such as forecasts.
+- **It can't make up numbers.** The AI calculates nothing: every figure comes from the dashboard's own code, and any sentence quoting a number it wasn't given is thrown away.
+- **Trying it live shaped it.** It once described a small rise as a drop, and compared a full week with a two-day one. Both are fixed. Asked the leading "why did it drop" on the real data, it now answers that it didn't.
 
 ## What I deliberately did not build
 
-- **Freight cost per case.** Carrier invoices have no delivery-level key, so this needs an allocation model, and that is Finance's decision.
-- **Competitor price position.** BazaarPulse titles share no key with our SKUs. The matching *is* the feature, and without a validated match set a price gap would be confidently wrong.
-- **Rules N2 (UTC→IST) and N6 (as-at-order price).** The quality view shows them as "not recorded".
-- **Authentication, frontend tests and generated API types.** Region scoping is a view filter, not a security control.
+- **Freight cost per case.** Carrier invoices can't be matched to deliveries, so the cost has to be split by a method Finance agrees, not one I invent.
+- **Competitor price comparison.** Competitor product names can't be reliably matched to Kestrel's products, and a wrong price gap is worse than the WhatsApp group.
+- **Login and permissions** (the region filter is a convenience, not security), and **frontend automated tests**.
 
 ## What I assumed
 
-- **Eaches, not cases.** Modern-trade penalties are on units, so eaches is the default. Cases is derived from the same lines, so FY27 Q1 reads 85.6% eaches and 85.9% cases, and the two cannot disagree.
-- **Q1 on the front page.** The default is the latest complete fiscal quarter *that has data*, FY27 Q1. It follows the data's last date, not today's, so an ageing extract never opens on an empty quarter.
-- **OTIF reads 0%, deliberately.** In full means every each delivered, and none of the 511,516 lines were. Adding a tolerance would invent a number. On-time (43.0%) still discriminates, and whether complete deliveries are ever recorded is a question for Operations.
-- **There is no SLA.** The 30-minute on-time tolerance and the 30-day near-expiry window are configuration.
-- **Exclusions are flags, not deletions.** Closed outlets are excluded per period. Duplicates key on GST, because keying on name would drop 197 real outlets. Test outlets are `TST%` codes, even though all three are marked ACTIVE.
-- **Contradictory source columns lose.** `delay_minutes` disagrees with the timestamps on about 87% of rows, so delay is recomputed. Only APPROVED credit notes count as leakage. Available stock excludes damaged and blocked cases.
-- **Ask-anything may state causes it cannot measure.** Invented figures are blocked; invented explanations are not. The measurements sit beside the prose so a reader can judge it.
+- **Eaches, not cases.** Modern trade penalises units short, so eaches is the default; cases is one click away. Both come from the same records, so they can't disagree: 85.6% and 85.9% for FY27 Q1.
+- **Q1 on the front page.** The page opens on the latest finished quarter with data: FY27 Q1.
+- **On-time-in-full shows 0%, correctly.** Not one order line was delivered in full. I didn't loosen the definition to flatter the number. On-time alone (43%) is still useful, and why nothing is ever recorded as complete is a question for Operations.
+- **No service agreement is written down,** so "on time" allows 30 minutes and "near expiry" means 30 days. Both are settings.
+- **Where the source contradicts itself, I recalculate.** Recorded delay disagrees with arrival times on 87% of deliveries, so delay comes from the times. Only approved credit notes count as money lost, and damaged or blocked stock isn't available.
+- **Duplicate and test outlets are left out.** Duplicates match on GST number, since matching on name would drop 197 real shops. Test outlets are found by their "TST" code, because all are marked active.
+- **The chatbot may suggest a cause it can't measure.** That explanation is the useful part. Its measurements sit beside it so you can judge.
 
 ## With two more weeks
 
-Freight, once an allocation is agreed. Price position, using a hand-labelled match set and a confidence threshold. A shareable investigation view. An evaluation set of real questions for ask-anything, since every serious bug in it so far was found live rather than by tests.
+Freight cost once Finance agrees the split. Competitor prices using a hand-checked list of product matches. A shareable link to a chatbot investigation. A set of real questions to test the chatbot automatically, since its bugs so far were found live.
 
 ## What breaks first in production
 
-The transform is a full rebuild. That is seconds at 511k lines but not at 100×, so the build and the ledger must go incremental. SQLite is fine on one machine, but many concurrent users need a real warehouse. An investigation costs about six model calls and 15–25 s, so cost and rate limits bite once every manager uses it. Some rules can't be tested properly on this data: X5 had only two duplicate groups and N1 never fired.
+- **The rebuild:** it starts from scratch each time, which is seconds today and too slow at 100 times the data.
+- **The database:** SQLite suits one machine, not many users at once.
+- **Chatbot cost:** a "why" question takes about six AI calls and 15–25 seconds, so cost and rate limits appear once every manager uses it.
+- **Thinly tested rules:** the duplicate-outlet rule had only two examples to check against.
