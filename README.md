@@ -1,126 +1,140 @@
-# Kestrel Provisions — Supply Chain Control Tower
+# Kestrel Control Tower
 
-Single, documented, reproducible answers for Kestrel Provisions' daily supply
-chain operations.
+One screen showing where Kestrel is losing service and money, plus a chatbot you can ask questions in plain English.
 
-Requirements are defined in [PRD.md](PRD.md). The architecture is described in
-[docs/superpowers/specs/2026-09-08-kestrel-portal-design.md](docs/superpowers/specs/2026-09-08-kestrel-portal-design.md).
-Decisions and their trade-offs are in [DECISIONS.md](DECISIONS.md).
+Setup takes about five minutes the first time.
 
-## Prerequisites
+---
 
-- Python 3.11 or later
-- Node.js 20 or later
-- The assignment pack's `kestrel_ops.db`. It is **not** committed to this
-  repository. The application opens it read-only and never modifies it.
+## 1. What you need
 
-## Cold start
+- **Python 3.11 or newer**. Check with `python --version` (on macOS, `python3 --version`).
+- **Node.js 20 or newer**. Check with `node --version`.
+- **The assignment pack**, which contains `data/kestrel_ops.db`. The database is not in this repository.
+- *Optional:* a **Gemini API key**, only needed for the chatbot. Everything else works without one.
 
-### 1. Configure
+## 2. Put the code in the right place
+
+Clone this repository **inside the assignment pack folder**, next to `data/`:
+
+```
+FDE_Assignment_Pack_Kestrel_v1.1/
+├── data/kestrel_ops.db      ← the database
+└── kestrel-portal/          ← this repository
+```
+
+With that layout, the app finds the database by itself.
+
+## 3. One-time setup
+
+Open a terminal in the `kestrel-portal` folder.
+
+**Step 1: create the settings file.**
+
+macOS / Linux:
 
 ```bash
 cp .env.example .env
 ```
 
-Edit `.env` and set `KESTREL_SOURCE_DB_PATH` to the path of `kestrel_ops.db`.
-Relative paths are resolved from this repository's root, so the default
-`../data/kestrel_ops.db` is correct when this repository sits inside the
-assignment pack.
+Windows (PowerShell):
 
-### 2. Install and build the curated data
+```powershell
+Copy-Item .env.example .env
+```
+
+For the chatbot, open `.env` and add (or fill in) this line with your own key:
+
+```
+KESTREL_GEMINI_API_KEY=your-key-here
+```
+
+**Step 2: install the backend and build the data.** This takes about a minute.
+
+macOS / Linux:
 
 ```bash
 cd backend
-python -m venv .venv
-```
-
-Activate it — macOS/Linux `source .venv/bin/activate`, Windows PowerShell
-`.venv\Scripts\Activate.ps1`, Git Bash on Windows `source .venv/Scripts/activate` — then:
-
-```bash
+python3 -m venv .venv
+source .venv/bin/activate
 pip install -r requirements-dev.txt
 pip install -e . --no-deps
 python -m kestrel.transform build
 ```
 
-The build prints the row counts it produced and the quality ledger counts by
-rule. It is idempotent: re-run it as often as you like. It takes 30-65 seconds depending on disk, and
-writes `data/curated/kestrel_curated.db`.
+Windows (PowerShell):
 
-### 3. Run the API
-
-```bash
-python -m uvicorn kestrel.main:app --reload
+```powershell
+cd backend
+python -m venv .venv
+.venv\Scripts\Activate.ps1
+pip install -r requirements-dev.txt
+pip install -e . --no-deps
+python -m kestrel.transform build
 ```
 
-API docs at http://127.0.0.1:8000/docs
+When the build finishes, it prints how many rows it built.
 
-### 4. Run the interface
-
-In a second terminal:
+**Step 3: install the frontend.** From the `kestrel-portal` folder:
 
 ```bash
 cd frontend
 npm install
+```
+
+## 4. Run it
+
+You need **two terminals**, both left open.
+
+**Terminal 1: the backend.** Go to `kestrel-portal/backend`, activate the environment (`source .venv/bin/activate`, or `.venv\Scripts\Activate.ps1` on Windows), then run:
+
+```bash
+python -m uvicorn kestrel.main:app
+```
+
+**Terminal 2: the frontend.** Go to `kestrel-portal/frontend`, then run:
+
+```bash
 npm run dev
 ```
 
-Open http://localhost:5173
+Then open **http://localhost:5173** in your browser.
 
-## Tests
+---
+
+## If something goes wrong
+
+| You see | Do this |
+|---|---|
+| `Source database not found` | The database isn't at `../data/kestrel_ops.db`. Either move this folder into the assignment pack, or set `KESTREL_SOURCE_DB_PATH=` in `.env` to the full path of `kestrel_ops.db`. |
+| `Curated database not found`, or the page shows errors | You skipped the build. Run `python -m kestrel.transform build` in `backend` with the environment active. |
+| Windows says running scripts is disabled | Run `Set-ExecutionPolicy -Scope Process Bypass` in the same terminal, then activate again. |
+| `python` or `pip` not found | On macOS / Linux use `python3`. On Windows, reinstall Python with "Add to PATH" ticked. |
+| Port 8000 is already in use | Start the backend with `--port 8001`. Then start the frontend with `KESTREL_API_TARGET=http://127.0.0.1:8001 npm run dev` on macOS / Linux, or `$env:KESTREL_API_TARGET="http://127.0.0.1:8001"; npm run dev` in Windows PowerShell. |
+| The chatbot says it is unavailable | Add `KESTREL_GEMINI_API_KEY` to `.env` and restart the backend. |
+
+---
+
+## Using it
+
+- **Control tower:** fill rate, on-time-in-full, returns, near-expiry stock and temperature breaches, with the worst performers listed. Choose a region and period in the top bar. The page address updates, so you can bookmark or share any view.
+- **Data quality:** what each number leaves out and why.
+- **Ask anything:** type a question such as *"why did fill rate drop in the West last week?"*. The chatbot shows each measurement it takes, then answers. Every number comes from the same calculations as the dashboard.
+
+Why things were built the way they are: [DECISIONS.md](DECISIONS.md).
+
+## For developers
+
+Run the tests (they don't need the real database) and the linter from `backend`, with the environment active:
 
 ```bash
-cd backend && python -m pytest
+python -m pytest
 ```
 
-Tests build a miniature source database in a temporary directory, so they do
-not need `kestrel_ops.db` to be present.
-
-Lint with `python -m ruff check src tests`.
-
-## How it fits together
-
-```
-kestrel_ops.db  ──(read-only)──>  transform  ──>  kestrel_curated.db
-                                      │                   │
-                                      └──> quality_ledger │
-                                                          v
-                                                       metrics
-                                                          │
-                                          FastAPI routers │  (no arithmetic)
-                                                          v
-                                                    React frontend
+```bash
+python -m ruff check src tests
 ```
 
-Reporting surfaces read the curated database only. Every figure is produced by
-exactly one metric implementation and is returned with the basis on which it
-was derived.
-
-## Scope
-
-Region and period are selected in the top bar and held in the URL, so any view
-is shareable by pasting the address, and the same scope applies to every card
-and to the ask panel. The dropdown offers the fiscal quarters and calendar
-months that actually contain rows — it is built from the data, not a fixed
-list. The default is the latest complete fiscal quarter that has data (FY27
-Q1 for the supplied extract), so the front page never opens on an empty
-quarter however old the extract is. Questions may additionally name a week (`2026-W24`) or an explicit range
-(`2026-04-01..2026-06-30`).
-
-## Ask anything
-
-> **Needs a Gemini API key.** Set `KESTREL_GEMINI_API_KEY=<your key>` in
-> `.env` and restart the API. Without it the ask panel says it is
-> unavailable; every dashboard figure and the data quality view work
-> without it.
-
-Ask a plain-English question about any of the five metrics. Simple questions
-resolve to one measurement and answer immediately.
-
-A question about *why* something moved starts an investigation: the model
-chooses a sequence of measurements — the period, the period before it, then a
-breakdown — each picked after seeing the result of the last, up to six. Every
-figure comes from the same metric functions the dashboard calls; the model
-picks which to run and explains what they show, but computes nothing itself,
-and any sentence quoting a figure it was not shown is discarded. The
-measurements taken are listed under each answer.
+- **API docs:** http://127.0.0.1:8000/docs while the backend is running.
+- **How the data flows:** `kestrel_ops.db` → build step (read-only) → `kestrel_curated.db` → API → web page. The API does no calculating of its own: every number comes from one metric function and carries the basis it was calculated on.
+- **More detail:** requirements in [PRD.md](PRD.md), architecture in [docs/superpowers/specs/](docs/superpowers/specs/2026-09-08-kestrel-portal-design.md), and a build log in [PROGRESS.md](PROGRESS.md).
