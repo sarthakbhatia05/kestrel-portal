@@ -250,3 +250,63 @@ export interface ScopeOptions {
   regions: RegionOption[];
   periods: PeriodOption[];
 }
+
+/** Data quality (PRD 6.4). */
+export interface RuleCount {
+  rule_ref: string;
+  rule_name: string;
+  count: number;
+}
+
+/** What one measure leaves out of the selected scope. A record can be
+ * excluded by several rules, so `by_rule` counts overlap and can sum to
+ * more than `excluded_count`. Counts are null only where no rule applies. */
+export interface MeasureExclusions {
+  measure: string;
+  label: string;
+  entity: string;
+  applies: boolean;
+  in_scope_count: number | null;
+  included_count: number | null;
+  excluded_count: number | null;
+  by_rule: RuleCount[];
+  note: string | null;
+}
+
+export interface RuleSummary {
+  rule_ref: string;
+  rule_name: string;
+  kind: "normalisation" | "exclusion";
+  applied: "build" | "query";
+  recorded: boolean;
+  /** Ledger entries for the whole build; null when the rule records none. */
+  ledger_count: number | null;
+}
+
+export interface QualityResult {
+  period_start: string;
+  period_end: string;
+  period_label: string;
+  scope: string;
+  measures: MeasureExclusions[];
+  rules: RuleSummary[];
+  built_at: string | null;
+}
+
+export interface LedgerEntry {
+  ledger_id: number;
+  entity_type: string;
+  entity_id: string | null;
+  action: string;
+  reason: string;
+  source_system: string | null;
+}
+
+export interface LedgerPage {
+  rule_ref: string;
+  rule_name: string;
+  total: number;
+  limit: number;
+  offset: number;
+  entries: LedgerEntry[];
+}

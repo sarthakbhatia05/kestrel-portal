@@ -13,8 +13,9 @@ Update it at the end of each slice, not continuously.
 
 | | |
 |---|---|
-| Slices complete | 7 (fill rate, OTIF, returns, near-expiry, excursions, ask-anything, scope + investigation) |
-| Backend tests | 254 passing, Ruff clean |
+| Slices complete | 8 (fill rate, OTIF, returns, near-expiry, excursions, ask-anything, scope + investigation, data quality) |
+| Backend tests | 286 passing, Ruff clean |
+| Quality view query | 0.12s national, 0.19s one region (NF3 allows 2s) |
 | Frontend | tsc and oxlint clean; no test suite yet (see Known gaps) |
 | Curated build | 14.4s (warm) — 511,516 order lines, 76,889 deliveries, 14,000 returns, 131,040 inventory snapshots, 42,377 ledger rows |
 | Fill rate query | 0.10s over 68,329 lines (NF3 allows 2s) |
@@ -27,6 +28,8 @@ Update it at the end of each slice, not continuously.
 investigates "why" questions by taking several measurements in sequence.
 **Scope** is selectable: region and period (quarters and months in the UI;
 weeks and explicit ranges accepted in a question).
+**Data quality** (PRD 6.4) states, for the selected scope, what each
+measure excludes and under which rule, with the ledger entries behind it.
 
 **Original "Slice 3" (PROGRESS.md, 2026-09-09) bundled returns and
 near-expiry.** Split into two on request: they don't share a fact table or
@@ -575,10 +578,95 @@ before, computes the change — and answers that **there was no drop**: the
 rate rose 0.08 points. Contradicting a leading question is the behaviour
 worth having.
 
-## Next
+## Slice 8 — data quality view (done, 2026-09-10)
 
-**The quality-ledger screen** — the table is already populated by the
-build; nothing renders it.
+PRD 6.4 asks for the ledger as "a first-class view in the product" that
+states "in counts, what the numbers on every other screen exclude". The
+table had been populated since slice 1; nothing rendered it. Brainstormed
+in chat (bounded path, no spec doc), TDD throughout.
+
+**Rendering the ledger table would not have met the requirement.** The
+ledger records one entry per soft-deleted *outlet* (X1: 42), while the
+dashboard excludes every *order line* belonging to those outlets (4,773 in
+FY27 Q1 alone). X3 is never in the ledger, because whether a closed outlet
+counts depends on the period being viewed. And a rule that never fired
+(N1, N3) has no rows, so "checked, found nothing" and "never implemented"
+looked identical. Decided with the user: the view follows the selected
+region and period, like every other surface.
+
+What now runs end to end:
+
+- `kestrel/quality/` — previously an empty placeholder package:
+  - `exclusions.py` — per measure, the rows in scope, the rows the metric
+    actually counts, and a count per rule, over the same fact table, date
+    column and joins the metric uses. Build-time rules read the row's
+    `exclusion_rules` flags; X3 is evaluated exactly as the metrics do.
+    Near-expiry is listed as "no exclusion rules apply" with null counts,
+    not zeros.
+  - `rules.py` — a catalogue of all eleven PRD rules (N1–N6, X1–X5):
+    build-time or per-period, and its ledger count. A rule that writes no
+    entries reports `null`, not `0`. Plus paged ledger entries per rule, so
+    any count traces to its records.
+  - `router.py` — `GET /api/service/quality` (scoped) and
+    `GET /api/service/quality/ledger?rule=` (build-wide, labelled so).
+- Frontend: `?view=quality` in the URL state `useScope` already owned. The
+  top bar moved out of `LandingView` into `App` with "Control tower" /
+  "Data quality" links, so scope carries across views. One `useScope`
+  instance, owned by `App`: two would each hold their own copy, since
+  `pushState` notifies nobody.
+
+### Decisions worth defending
+
+- **Counts reconcile with the metrics by test, not by care.** For each of
+  the four period metrics and two periods, the quality view's counted rows
+  must equal the metric's `source_row_count`, and in-scope rows must equal
+  it with `include_excluded=True`. Mutation-checked: dropping X3 from the
+  counted filter fails all four FY27 Q1 cases. The shared fixture's only
+  closed-outlet row was also a cancelled order, which would have let an X3
+  drift hide behind X4, so the test adds an order that only X3 excludes.
+- **Rule counts overlap and the screen says so.** A cancelled order at a
+  closed outlet is one excluded line under two rules; the per-rule columns
+  can sum past the excluded total.
+
+### Found in the data (verified, not assumed)
+
+- **FY27 Q1 fill rate is measured over 68,329 of 85,861 order lines —
+  20.4% are excluded.** OTIF 12.1%, returns 13.7%, excursions 12.4%.
+- **X3 is the largest single rule after X4** (5,373 lines nationally;
+  2,043 of North's 3,918) — and it was the one the ledger could never show.
+- **N2 and N6 appear nowhere in the transform.** No UTC→Asia/Kolkata
+  conversion of order timestamps, no as-at-order-date price resolution. The
+  catalogue marks both "Not recorded" rather than implying they ran. Whether
+  either needs building is an open question, not settled here.
+- **3 of the 4 X5 duplicate outlets are also the X2 test outlets** — the
+  test outlets share GST numbers.
+
+### What the page says, in plain words
+
+Worked out while walking the user through it, and worth keeping as the
+test of whether the page is doing its job:
+
+1. The dashboard deliberately does not use all the data — about 1 in 5
+   order lines in FY27 Q1 is left out of fill rate.
+2. Every record left out has a rule saying why (mostly cancelled orders
+   and closed shops).
+3. Some values were repaired rather than removed (negative return
+   quantities, city spellings).
+4. Any count can be clicked through to the records behind it.
+
+So when someone's spreadsheet disagrees with the dashboard, the argument
+becomes "which rule did you apply differently", not "whose number is
+right" — Divya's four-people-four-numbers problem, answered directly.
+
+### Verified
+
+Hand-tested in the browser on this session's own servers (backend 8010,
+frontend 5183) against the real curated database: the table, X4's 41,401
+entries paged 1–50 → 51–100, region switched to North (19.5% excluded,
+matching the in-process count), and back to the control tower with region
+and period carried over. No console errors.
+
+## Next
 
 **A drill-down view for an investigation**, so an analysis is shareable by
 URL rather than living inside one answer in one session's panel.
@@ -594,8 +682,10 @@ URL rather than living inside one answer in one session's panel.
   `api/types.ts` rather than generated from the OpenAPI schema, so the two
   can drift.
 - Transform is a full rebuild. Fine at 511k lines; not at 50 million.
-- `coldchain/` and `quality/` are empty packages that exist to make the
-  intended structure visible. `ask/` and `reference/` are now populated.
+- `coldchain/` is an empty package that exists to make the intended
+  structure visible. `ask/`, `reference/` and `quality/` are now populated.
+- Ledger entries are build-wide; the ledger stores no region or period, so
+  the per-rule entry list cannot be scoped the way the counts are.
 - Ask-anything has no automated live-model test. Prompt quality is verified
   by hand against a real key, which is how all five of the above were found
   and is not a substitute for a test.

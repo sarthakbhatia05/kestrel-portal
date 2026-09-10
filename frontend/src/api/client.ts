@@ -12,6 +12,8 @@ import type {
   ReturnsGrain,
   ReturnsResult,
   AskEvent,
+  LedgerPage,
+  QualityResult,
   ScopeOptions,
   Unit,
 } from "./types";
@@ -195,6 +197,26 @@ export async function postAsk(body: {
  */
 export function fetchScope(): Promise<ScopeOptions> {
   return get<ScopeOptions>("/api/service/reference/scope", {});
+}
+
+/** What every other screen excludes, for the selected scope (PRD 6.4). */
+export function fetchQuality(params: {
+  regionId: number | null;
+  period: string;
+}): Promise<QualityResult> {
+  return get<QualityResult>("/api/service/quality", {
+    region_id: params.regionId,
+    period: params.period,
+  });
+}
+
+/** The ledger entries behind one rule's count. Build-wide, not scoped. */
+export function fetchLedger(params: {
+  rule: string;
+  limit: number;
+  offset: number;
+}): Promise<LedgerPage> {
+  return get<LedgerPage>("/api/service/quality/ledger", params);
 }
 
 /**

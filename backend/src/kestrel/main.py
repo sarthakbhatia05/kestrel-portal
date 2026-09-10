@@ -5,6 +5,7 @@ from fastapi.responses import JSONResponse
 from kestrel.ask.router import router as ask_router
 from kestrel.config import get_settings
 from kestrel.exceptions import AppError
+from kestrel.quality.router import router as quality_router
 from kestrel.reference.router import router as reference_router
 from kestrel.service.router import router as service_router
 
@@ -35,6 +36,7 @@ def create_app() -> FastAPI:
 
     app.include_router(service_router)
     app.include_router(reference_router)
+    app.include_router(quality_router)
     app.include_router(ask_router)
 
     return app
