@@ -40,9 +40,8 @@ first as the rupee-denominated metric (PRD C3.4); near-expiry is next.
 
 ## Slice 1 — scaffold and fill rate (done, 2026-09-08)
 
-Design [spec](docs/superpowers/specs/2026-09-08-kestrel-portal-design.md) →
-[plan](docs/superpowers/plans/2026-09-08-scaffold-and-fill-rate-slice.md) →
-11 tasks, TDD throughout, `1877f59`..`8c9569e`.
+Design spec → implementation plan (local working documents, not kept in
+the repository) → 11 tasks, TDD throughout, `1877f59`..`8c9569e`.
 
 What now runs end to end:
 
@@ -89,8 +88,8 @@ figure, so the two views cannot disagree. They currently read 85.6% and 85.9%.
 
 ## Slice 2 — OTIF (done, 2026-09-09)
 
-Design [spec](docs/superpowers/specs/2026-09-09-otif-slice-design.md) →
-[plan](docs/superpowers/plans/2026-09-09-otif-slice.md) → 13 tasks, TDD
+Design spec → implementation plan (local working documents, not kept in
+the repository) → 13 tasks, TDD
 throughout.
 
 What now runs end to end:

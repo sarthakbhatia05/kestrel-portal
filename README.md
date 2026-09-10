@@ -137,4 +137,4 @@ python -m ruff check src tests
 
 - **API docs:** http://127.0.0.1:8000/docs while the backend is running.
 - **How the data flows:** `kestrel_ops.db` → build step (read-only) → `kestrel_curated.db` → API → web page. The API does no calculating of its own: every number comes from one metric function and carries the basis it was calculated on.
-- **More detail:** requirements in [PRD.md](PRD.md), architecture in [docs/superpowers/specs/](docs/superpowers/specs/2026-09-08-kestrel-portal-design.md), and a build log in [PROGRESS.md](PROGRESS.md).
+- **More detail:** requirements in [PRD.md](PRD.md), and a build log in [PROGRESS.md](PROGRESS.md).

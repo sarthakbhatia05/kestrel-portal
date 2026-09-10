@@ -21,6 +21,9 @@ build/
 warehouse/
 .cache/
 
+# Local working documents (design specs and plans)
+docs/superpowers/
+
 # OS / editor
 .DS_Store
 Thumbs.db
